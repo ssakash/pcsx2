@@ -92,30 +92,36 @@ void sortFullFlag(int* fFlag, int* bFlag) {
 	}
 }
 
-#define sFlagCond (sFLAG.doFlag || mVUlow.isFSSET || mVUinfo.doDivFlag)
+#define sFlagCond (sFLAG.doFlag || mVUlow.isFSSET || mVUinfo.doDivFlag )
 #define sHackCond (mVUsFlagHack && !sFLAG.doNonSticky)
 
 // Note: Flag handling is 'very' complex, it requires full knowledge of how microVU recs work, so don't touch!
 __fi void mVUsetFlags(mV, microFlagCycles& mFC) {
-
 	int endPC  = iPC;
-	u32 aCount = 1; // Amount of instructions needed to get valid mac flag instances for block linking
+	u32 aCount = 0; // Amount of instructions needed to get valid mac flag instances for block linking
+	bool writeProtect = false;
 
 	// Ensure last ~4+ instructions update mac/status flags (if next block's first 4 instructions will read them)
 	for(int i = mVUcount; i > 0; i--, aCount++) {
 		if (sFLAG.doFlag) { 
-			if (__Mac)
+
+			if (__Mac) {
 				mFLAG.doFlag = true;
+				writeProtect = true;
+			}
 
-			if (__Status)
+			if (__Status) {
 				sFLAG.doNonSticky = true;
+				writeProtect = true;
+			}
 
-			if (aCount >= 4)
+			if (aCount >= 3){
 				break;
+			}
 		}
 		incPC2(-2);
 	}
-
+		
 	// Status/Mac Flags Setup Code
 	int xS = 0, xM = 0, xC = 0;
 	u32 ff0=0, ff1=0, ffOn=0, fInfo=0;

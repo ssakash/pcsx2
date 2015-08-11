@@ -1,5 +1,5 @@
 /*
- *	Copyright (C) 2007-2009 Gabest
+ *	Copyright (C) 2007-2015 Gabest
  *	http://www.gabest.org
  *
  *  This Program is free software; you can redistribute it and/or modify
@@ -30,6 +30,30 @@ const char* dialog_message(int ID, bool* updateText) {
 		*updateText = true;
 	switch (ID)
 	{
+		case IDC_FILTER:
+			return "Control the texture bilinear filtering of the emulation\n\n"
+				"Nearest or OFF\t: Always disable interpolation, rendering will be blocky.\n"
+				"----------------------------------------------------------------------------\n"
+				"PS2 or GRAYED\t: Use same mode as the PS2. It is the more accurate option.\n"
+				"----------------------------------------------------------------------------\n"
+				"Forced or ON\t: Always enable interpolation. Rendering is smoother but it could generate some glitches.";
+		case IDC_CRC_LEVEL:
+			return "Control the number of Auto-CRC hacks applied to games.\n\n"
+				"None\t\t: Remove nearly all CRC hacks (debug only).\n"
+				"------------------------------------------------------------------\n"
+				"Minimum\t: Enable a couple of CRC hacks (23).\n"
+				"------------------------------------------------------------------\n"
+				"Partial\t\t: Enable most of the CRC hacks.\n\n"
+				"Recommended setting for OpenGL users.\n"
+				"Note, may require \'Accurate\' options to be enabled under Hardware Mode Settings.\n"
+				"------------------------------------------------------------------\n"
+				"Full\t\t: Enable all CRC hacks.\n\n" 
+				"Recommended setting for DirectX users.\n"
+				"------------------------------------------------------------------\n"
+				"Aggressive\t : Use more aggressive CRC hacks.\n\n"
+				"Only affects a few games, removing some effects which might make the image sharper/clearer.\n\n"
+				"Affected games: FFX, FFX2, FFXII, GOW2, ICO, SoTC, SSX3, SMT3, SMTDDS1, SMTDDS2.\n"
+				"Works as a speedhack for: Steambot Chronicles.";
 		case IDC_SKIPDRAWHACK:
 		case IDC_SKIPDRAWHACKEDIT:
 		case IDC_STATIC_SKIPDRAW:
@@ -37,7 +61,8 @@ const char* dialog_message(int ID, bool* updateText) {
 				"Use it, for example, to try and get rid of bad post processing effects."
 				" Try values between 1 and 100.";
 		case IDC_ALPHAHACK:
-			return "Alpha Hack\n\nDifferent alpha handling. Can work around some shadow problems.";
+			return "Alpha Hack\n\nDifferent alpha handling. Can work around some shadow problems.\n\n"
+				"DX only, OpenGL emulates those effects correctly with accurate options.";
 		case IDC_OFFSETHACK:
 			return "Halfpixel\n\nMight fix some misaligned fog, bloom, or blend effect.";
 		case IDC_SPRITEHACK:
@@ -52,21 +77,14 @@ const char* dialog_message(int ID, bool* updateText) {
 		case IDC_MSAACB:
 		case IDC_STATIC_MSAA:
 			return "Multisample Anti-Aliasing\n\nEnables hardware Anti-Aliasing. Needs lots of memory."
-				" The Z-24 modes might need to have LogarithmicZ to compensate for the bits lost (only in DX9 mode).";
-		case IDC_AGGRESSIVECRC:
-			return "Use more aggressive CRC hacks on some games\n\n"
-				"Only affects few games, removing some effects which might make the image sharper/clearer.\n"
-				"Affected games: FFX, FFX2, FFXII, GOW2, ICO, SoTC, SSX3.\n"
-				"Works as a speedhack for: Steambot Chronicles.";
+				" The Z-24 modes might need to have LogarithmicZ to compensate for the bits lost (only in DX9 mode).\n\n"
+				" MSAA is not implemented on the OpenGL renderer";
+		
 		case IDC_ALPHASTENCIL:
 			return "Extend stencil based emulation of destination alpha to perform stencil operations while drawing.\n\n"
 				"Improves many shadows which are normally overdrawn in parts, may affect other effects.\n"
-				"Will disable partial transparency in some games or even prevent drawing some elements altogether.";
-		case IDC_CHECK_NVIDIA_HACK:
-			return "This is a hack to work around problems with recent NVIDIA drivers causing odd stretching problems in DirectX 11 only "
-				"when using Upscaling.\n\n"
-				"Try not to use this unless your game Videos or 2D screens are stretching outside the frame.\n\n"
-				"If you have an AMD/ATi graphics card you should not need this.";
+				"Will disable partial transparency in some games or even prevent drawing some elements altogether."
+				"DX only, OpenGL emulates those effects correctly with accurate options.";
 		case IDC_CHECK_DISABLE_ALL_HACKS:
 			return "FOR TESTING ONLY!!\n\n"
 				"Disable all CRC hacks - will break many games. Overrides CrcHacksExclusion at gsdx.ini\n"
@@ -77,9 +95,10 @@ const char* dialog_message(int ID, bool* updateText) {
 		case IDC_ALIGN_SPRITE:
 			return "Sprite Alignment Hack\n\n"
 				"Fixes issues with upscaling(vertical lines) in Namco games like Ace Combat, Tekken, Soul Calibur, etc.";
-		case IDC_STRETCH_SPRITE:
+		case IDC_ROUND_SPRITE:
 			return "Corrects the sampling of 2D sprite textures when upscaling.\n\n"
-				"Fixes lines in sprites of games like Ar tonelico when upscaling.";
+				"Fixes lines in sprites of games like Ar tonelico when upscaling.\n\n"
+				"Windows: Carries a total of three states: Unchecked (off), Checked (on for all sprites) and Shaded (on for flat sprites)";
 		case IDC_TCOFFSETX:
 		case IDC_TCOFFSETX2:
 		case IDC_STATIC_TCOFFSETX:
@@ -90,11 +109,31 @@ const char* dialog_message(int ID, bool* updateText) {
 				"Offset for the ST/UV texture coordinates. Fixes some odd texture issues and might fix some post processing alignment too.\n\n"
 				"  0500 0500, fixes Persona 3 minimap, helps Haunting Ground.\n"
 				"  0000 1000, fixes Xenosaga hair edges (DX10+ Issue)\n";
-
+		case IDC_PALTEX:
+			return "When checked 4/8 bits texture will be send to the GPU with a palette. GPU will be in charge of the conversion.\n\n"
+				"When uncheked the CPU will convert directly the texture to 32 bits\n\n"
+				"It is a basically a trade-off between GPU/CPU";
+		case IDC_ACCURATE_DATE:
+			return "Implement a more accurate algorithm to compute GS destination alpha testing.\n\n"
+				"It could be slower when the effects are used.\n\nNote: it requires the 4.2 OpenGL extension GL_ARB_shader_image_load_store";
+		case IDC_ACCURATE_BLEND_UNIT:
+			return "Control the accuracy level of the GS blending unit emulation. Note: it requires a GL4.5 drivers\n\n"
+				"None\t: Fast but introduce various rendering issues. It is intended for slow computer.\n"
+				"------------------------------------------------------------------\n"
+				"Basic\t: Emulate correctly most of the effects with a limited speed penality. It is the recommended setting.\n"
+				"------------------------------------------------------------------\n"
+				"Medium\t: Extend it to all sprites. Performance impact remains reasonable in 3D game.\n"
+				"------------------------------------------------------------------\n"
+				"High\t: Extend it to destination alpha blending and color wrapping. (help shadow and fog effect). A good CPU is required\n"
+				"------------------------------------------------------------------\n"
+				"Full\t\t: Except few cases, the blending unit will be fully emulated by the shader. It is ultra slow! It is intended for debug\n"
+				"------------------------------------------------------------------\n"
+				"Ultra\t: The blending unit will be completely emulated by the shader. It is ultra slow! It is intended for debug\n";
+		case IDC_TC_DEPTH:
+			return "Allow to convert Depth buffer from/to Color buffer. It is used for blur & depth of field effects";
 		default:
 			if (updateText)
 				*updateText = false;
 			return "";
 	}
-	return "";
 }

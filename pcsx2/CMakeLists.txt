@@ -12,7 +12,6 @@ if(NOT TOP_CMAKE_WAS_SOURCED)
 endif()
 
 
-# set common flags
 set(CommonFlags
     # GCC-4.6 crash pcsx2 during the binding of plugins at startup...
     # Disable this optimization for the moment
@@ -27,47 +26,6 @@ set(CommonFlags
     -DWX_PRECOMP
 	)
 
-# set optimization flags
-set(OptimizationFlags
-	-falign-functions
-	-falign-jumps
-	-falign-labels
-	-falign-loops
-	-fcaller-saves
-	-fcprop-registers
-	-fcrossjumping
-	-fcse-follow-jumps
-	-fcse-skip-blocks
-	-fdefer-pop
-	-fdelete-null-pointer-checks
-	-fgcse
-	-fgcse-lm
-	-fif-conversion
-	-fif-conversion2
-	-fmerge-constants
-	-foptimize-sibling-calls
-	-fpeephole2
-	-fregmove
-	-freorder-blocks
-	-freorder-functions
-	-frerun-cse-after-loop
-	-fsched-interblock
-	-fsched-spec
-	-fstrict-overflow
-	-fthread-jumps
-	-ftree-ccp
-	-ftree-ch
-	-ftree-copyrename
-	-ftree-dce
-	-ftree-dominator-opts
-	-ftree-fre
-	-ftree-lrs
-	-ftree-pre
-	-ftree-sra
-	-ftree-ter
-	-ftree-vrp
-	-funit-at-a-time)
-
 #Clang doesn't support a few common flags that GCC does.
 if(NOT USE_CLANG)
 	set(pcsx2FinalFlags ${CommonFlags} -fno-guess-branch-probability -fno-dse -fno-tree-dse)
@@ -75,16 +33,13 @@ endif()
 
 # Debug - Build
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
-    set(Output pcsx2-dbg)
 	set(pcsx2FinalFlags ${pcsx2FinalFlags} ${CommonFlags} -DPCSX2_DEVBUILD -DPCSX2_DEBUG)
 
 elseif(CMAKE_BUILD_TYPE STREQUAL Devel)
-	set(Output pcsx2-dev)
-	set(pcsx2FinalFlags ${pcsx2FinalFlags} ${CommonFlags} ${OptimizationFlags} -DPCSX2_DEVBUILD)
+	set(pcsx2FinalFlags ${pcsx2FinalFlags} ${CommonFlags} -DPCSX2_DEVBUILD)
 
 elseif(CMAKE_BUILD_TYPE STREQUAL Release)
-	set(Output pcsx2)
-	set(pcsx2FinalFlags ${pcsx2FinalFlags} ${CommonFlags} ${OptimizationFlags})
+	set(pcsx2FinalFlags ${pcsx2FinalFlags} ${CommonFlags})
 
 endif()
 
@@ -95,10 +50,7 @@ if(XDG_STD)
 	)
 endif()
 
-# In package mode always use pcsx2
-if(PACKAGE_MODE)
-    set(Output pcsx2)
-endif()
+set(Output PCSX2)
 
 # Main pcsx2 source
 set(pcsx2Sources
@@ -317,8 +269,8 @@ set(pcsx2GuiSources
 	gui/Panels/MemoryCardListView.cpp
 	gui/Panels/ThemeSelectorPanel.cpp
 	gui/Dialogs/BaseConfigurationDialog.cpp
-	gui/Dialogs/BiosSelectorDialog.cpp
 	gui/Dialogs/ConfirmationDialogs.cpp
+	gui/Dialogs/ConvertMemoryCardDialog.cpp
 	gui/Dialogs/CreateMemoryCardDialog.cpp
 	gui/Dialogs/FirstTimeWizard.cpp
 	gui/Dialogs/GameDatabaseDialog.cpp
@@ -343,6 +295,7 @@ set(pcsx2GuiSources
 	gui/MainFrame.cpp
 	gui/MainMenuClicks.cpp
 	gui/MemoryCardFile.cpp
+	gui/MemoryCardFolder.cpp
 	gui/Panels/BaseApplicableConfigPanel.cpp
 	gui/Panels/MemoryCardListPanel.cpp
 	gui/MessageBoxes.cpp
@@ -395,6 +348,7 @@ set(pcsx2GuiHeaders
 	gui/IsoDropTarget.h
 	gui/MainFrame.h
 	gui/MemoryCardFile.h
+	gui/MemoryCardFolder.h
 	gui/MSWstuff.h
 	gui/Panels/ConfigurationPanels.h
 	gui/Panels/LogOptionsPanels.h

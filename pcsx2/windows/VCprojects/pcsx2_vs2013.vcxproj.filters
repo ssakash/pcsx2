@@ -635,6 +635,9 @@
     <ClCompile Include="..\..\gui\MemoryCardFile.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\gui\MemoryCardFolder.cpp">
+      <Filter>AppHost</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\gui\MessageBoxes.cpp">
       <Filter>AppHost</Filter>
     </ClCompile>
@@ -659,10 +662,10 @@
     <ClCompile Include="..\..\gui\Dialogs\BaseConfigurationDialog.cpp">
       <Filter>AppHost\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\Dialogs\BiosSelectorDialog.cpp">
+    <ClCompile Include="..\..\gui\Dialogs\ConfirmationDialogs.cpp">
       <Filter>AppHost\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\gui\Dialogs\ConfirmationDialogs.cpp">
+    <ClCompile Include="..\..\gui\Dialogs\ConvertMemoryCardDialog.cpp">
       <Filter>AppHost\Dialogs</Filter>
     </ClCompile>
     <ClCompile Include="..\..\gui\Dialogs\CreateMemoryCardDialog.cpp">
@@ -864,6 +867,9 @@
     </ClCompile>
     <ClCompile Include="..\..\CDVD\ChunksCache.cpp">
       <Filter>System\ISO</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WinKeyCodes.cpp">
+      <Filter>AppHost\Win32</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1301,10 +1307,10 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="..\..\..\3rdparty\wxWidgets\include\wx\msw\wx.rc">
+    <ResourceCompile Include="..\wxResources.rc">
       <Filter>AppHost\Resources</Filter>
     </ResourceCompile>
-    <ResourceCompile Include="..\wxResources.rc">
+    <ResourceCompile Include="..\..\..\3rdparty\wxwidgets3.0\include\wx\msw\wx.rc">
       <Filter>AppHost\Resources</Filter>
     </ResourceCompile>
   </ItemGroup>

@@ -21,6 +21,10 @@
 
 #include "stdafx.h"
 #include "GSCapture.h"
+#include "GSPng.h"
+#ifdef __linux__
+#include <sys/stat.h> // mkdir
+#endif
 
 #ifdef _WINDOWS
 
@@ -375,8 +379,11 @@ static IPin* GetFirstPin(IBaseFilter* pBF, PIN_DIRECTION dir)
 //
 
 GSCapture::GSCapture()
-	: m_capturing(false)
+	: m_capturing(false), m_frame(0)
+	  , m_out_dir("/tmp/GSdx_Capture") // FIXME Later add an option
 {
+	m_out_dir = theApp.GetConfig("capture_out_dir", "/tmp/GSdx_Capture");
+	m_threads = theApp.GetConfig("capture_threads", 4);
 }
 
 GSCapture::~GSCapture()
@@ -387,7 +394,7 @@ GSCapture::~GSCapture()
 bool GSCapture::BeginCapture(float fps)
 {
 #ifdef _CX11_
-	std::lock_guard<std::mutex> lock(m_lock);
+	std::lock_guard<std::recursive_mutex> lock(m_lock);
 #else
 	GSAutoLock lock(&m_lock);
 #endif
@@ -476,6 +483,22 @@ bool GSCapture::BeginCapture(float fps)
 
 	CComQIPtr<IGSSource>(m_src)->DeliverNewSegment();
 
+#elif __linux__
+	// Note I think it doesn't support multiple depth creation
+	mkdir(m_out_dir.c_str(), 0777);
+
+	// Really cheap recording
+	m_frame = 0;
+	// Add option !!!
+	m_size.x = theApp.GetConfig("capture_resx", 1280);
+	m_size.y = theApp.GetConfig("capture_resy", 1024);
+
+#ifdef __linux__
+	for(int i = 0; i < m_threads; i++) {
+		m_workers.push_back(new GSPng::Worker());
+	}
+#endif
+
 #endif
 
 	m_capturing = true;
@@ -486,7 +509,7 @@ bool GSCapture::BeginCapture(float fps)
 bool GSCapture::DeliverFrame(const void* bits, int pitch, bool rgba)
 {
 #ifdef _CX11_
-	std::lock_guard<std::mutex> lock(m_lock);
+	std::lock_guard<std::recursive_mutex> lock(m_lock);
 #else
 	GSAutoLock lock(&m_lock);
 #endif
@@ -507,6 +530,14 @@ bool GSCapture::DeliverFrame(const void* bits, int pitch, bool rgba)
 		return true;
 	}
 
+#elif __linux__
+
+	std::string out_file = m_out_dir + format("/frame.%010d.png", m_frame);
+	//GSPng::Save(GSPng::RGB_PNG, out_file, (char*)bits, m_size.x, m_size.y, pitch);
+	m_workers[m_frame%m_threads]->Push(shared_ptr<GSPng::Transaction>(new GSPng::Transaction(GSPng::RGB_PNG, out_file, (char*)bits, m_size.x, m_size.y, pitch)));
+
+	m_frame++;
+
 #endif
 
 	return false;
@@ -515,7 +546,7 @@ bool GSCapture::DeliverFrame(const void* bits, int pitch, bool rgba)
 bool GSCapture::EndCapture()
 {
 #ifdef _CX11_
-	std::lock_guard<std::mutex> lock(m_lock);
+	std::lock_guard<std::recursive_mutex> lock(m_lock);
 #else
 	GSAutoLock lock(&m_lock);
 #endif
@@ -535,6 +566,13 @@ bool GSCapture::EndCapture()
 
 		m_graph = NULL;
 	}
+
+#elif __linux__
+	for(size_t i = 0; i < m_workers.size(); i++) {
+		m_workers[i]->Wait();
+	}
+
+	m_frame = 0;
 
 #endif
 

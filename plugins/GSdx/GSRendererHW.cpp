@@ -23,7 +23,7 @@
 #include "GSRendererHW.h"
 
 GSRendererHW::GSRendererHW(GSTextureCache* tc)
-	: m_width(1024)
+	: m_width(1280)
 	, m_height(1024)
 	, m_skip(0)
 	, m_reset(false)
@@ -35,59 +35,53 @@ GSRendererHW::GSRendererHW(GSTextureCache* tc)
 	m_userhacks_align_sprite_X = !!theApp.GetConfig("UserHacks_align_sprite_X", 0) && !!theApp.GetConfig("UserHacks", 0);
 	m_userhacks_round_sprite_offset = !!theApp.GetConfig("UserHacks", 0) ? theApp.GetConfig("UserHacks_round_sprite_offset", 0) : 0;
 
-	if(!m_nativeres)
-	{
+	if (m_upscale_multiplier == 1 && !m_nativeres) { //Custom
 		m_width = theApp.GetConfig("resx", m_width);
 		m_height = theApp.GetConfig("resy", m_height);
-
-		m_upscale_multiplier = theApp.GetConfig("upscale_multiplier", m_upscale_multiplier);
-
-		if(m_upscale_multiplier > 6)
-		{
-			m_upscale_multiplier = 1; // use the normal upscale math
-		}
-		else if(m_upscale_multiplier > 1)
-		{
-			m_width = 640 * m_upscale_multiplier; // 512 is also common, but this is not always detected right.
-			m_height = 512 * m_upscale_multiplier; // 448 is also common, but this is not always detected right.
-		}
-	}
-	else
-	{
-		m_upscale_multiplier = 1;
 	}
 
 	if (m_upscale_multiplier == 1) {
-		// No upscaling hack at native resolution
 		m_userhacks_round_sprite_offset = 0;
 		m_userhacks_align_sprite_X = 0;
 	}
 
-	// When you upscale sprite will sample invalid data of the texture. The idea is to add a subtexel offset
-	// so the sampling remains inside the texture.
-	// The strict minimal value can be computed with this formulae (you need to round above, [1;2[ must be rounded to 2).
-	//
-	// s: m_upscale_multiplier
-	// WH: Width or Height of the texture
-	// 0.5: initial offset of texture (not sure it is always true)
-	// L: length of primitive in pixels (after upscaling)
-	//
-	// Full formulae is
-	// 0.5 + (L - 1)* (WH-offset)/L < WH
-	//
-	// A reduced formulae is: (hypothesis 1:1 mapping => L == s*WH)
-	// offset > ((0.5)*s -1)/(s-1/WH)*16
-	//
-	// Rendering is perfect for 2x but some issues remains on higher scaling
-	switch (m_upscale_multiplier) {
-		case 1: m_sub_texel_offset = 0; break;
-		case 2: m_sub_texel_offset = 1; break;
-		case 3: m_sub_texel_offset = 3; break; // texture of 2 texels need 4 (Is is used?)
-		case 4: m_sub_texel_offset = 5; break;
-		case 5: m_sub_texel_offset = 6; break;
-		case 6: m_sub_texel_offset = 6; break;
-		default: break;
+}
+
+void GSRendererHW::SetScaling() {
+
+	m_buffer_size = max(m_context->FRAME.FBW * 64, m_regs->DISP[m_regs->PMODE.EN1 == 1 ? 0 : 1].DISPFB.FBW * 64);
+	
+	//Only increase the buffer size, don't make it smaller, it breaks games (GH3)
+
+	if (!m_nativeres && m_width < (m_buffer_size * m_upscale_multiplier)){
+		m_tc->RemovePartial();
 	}
+	else {
+		return;
+	}
+
+	m_height = m_buffer_size < 1024 ? 512 : 1024;
+	
+	m_upscale_multiplier = theApp.GetConfig("upscale_multiplier", m_upscale_multiplier);
+
+	if (m_upscale_multiplier == 1 && !m_nativeres) { //Custom
+		m_width = theApp.GetConfig("resx", m_width);
+		m_height = theApp.GetConfig("resy", m_height);
+	}
+		
+	if (m_upscale_multiplier > 1)
+	{
+		if (m_upscale_multiplier > 6)
+		{
+			m_upscale_multiplier = 1; // use the normal upscale math
+		}
+
+		m_width = m_buffer_size * m_upscale_multiplier;
+		m_height *= m_upscale_multiplier;
+	}
+	
+	
+	printf("Frame buffer size set to  %dx%d (%dx%d)\n", (m_width / m_upscale_multiplier), (m_height / m_upscale_multiplier), m_width, m_height);
 }
 
 GSRendererHW::~GSRendererHW()
@@ -100,11 +94,6 @@ void GSRendererHW::SetGameCRC(uint32 crc, int options)
 	GSRenderer::SetGameCRC(crc, options);
 
 	m_hacks.SetGameCRC(m_game);
-
-	if(m_game.title == CRC::JackieChanAdv)
-	{
-		m_width = 1280; // TODO: uses a 1280px wide 16 bit render target, but this only fixes half of the problem
-	}
 }
 
 bool GSRendererHW::CanUpscale()
@@ -134,6 +123,9 @@ void GSRendererHW::Reset()
 
 void GSRendererHW::VSync(int field)
 {
+	//Check if the frame buffer width or display width has changed
+	SetScaling();
+
 	if(m_reset)
 	{
 		m_tc->RemoveAll();
@@ -144,6 +136,9 @@ void GSRendererHW::VSync(int field)
 	GSRenderer::VSync(field);
 
 	m_tc->IncAge();
+
+	m_tc->PrintMemoryUsage();
+	m_dev->PrintMemoryUsage();
 
 	m_skip = 0;
 }
@@ -169,19 +164,19 @@ GSTexture* GSRendererHW::GetOutput(int i)
 
 	GSTexture* t = NULL;
 
-	if(GSTextureCache::Target* rt = m_tc->LookupTarget(TEX0, m_width, m_height))
+	if(GSTextureCache::Target* rt = m_tc->LookupTarget(TEX0, m_width, m_height, GetFrameRect(i).bottom))
 	{
 		t = rt->m_texture;
 
 		if(s_dump)
 		{
-			if(s_save && s_n >= s_saven)
+			if(s_savef && s_n >= s_saven)
 			{
 				t->Save(root_hw + format("%05d_f%lld_fr%d_%05x_%d.bmp", s_n, m_perfmon.GetFrame(), i, (int)TEX0.TBP0, (int)TEX0.PSM));
 			}
-
-			s_n++;
 		}
+
+		s_n++; // Alaways increment it
 	}
 
 	return t;
@@ -332,34 +327,50 @@ void GSRendererHW::RoundSpriteOffset()
 
 void GSRendererHW::Draw()
 {
-	if(m_dev->IsLost()) return;
-
-	if(GSRenderer::IsBadFrame(m_skip, m_userhacks_skipdraw)) return;
+	if(m_dev->IsLost() || GSRenderer::IsBadFrame(m_skip, m_userhacks_skipdraw)) {
+		GL_INS("Warning skipping a draw call (%d)", s_n);
+		s_n += 3; // Keep it sync with SW renderer
+		return;
+	}
+	GL_PUSH("HW Draw %d", s_n);
 
 	GSDrawingEnvironment& env = m_env;
 	GSDrawingContext* context = m_context;
+
+	// It is allowed to use the depth and rt at the same location. However at least 1 must
+	// be disabled.
+	// 1/ GoW uses a Cd blending on a 24 bits buffer (no alpha)
+	// 2/ SuperMan really draws (0,0,0,0) color and a (0) 32-bits depth
+	// 3/ 50cents really draws (0,0,0,128) color and a (0) 24 bits depth
+	// Note: FF DoC has both buffer at same location but disable the depth test (write?) with ZTE = 0
+	const bool no_rt = (context->ALPHA.IsCd() && PRIM->ABE && (context->FRAME.PSM == 1));
+	const bool no_ds = !no_rt && (context->FRAME.FBP == context->ZBUF.ZBP && !PRIM->TME && !context->ZBUF.ZMSK && !context->FRAME.FBMSK && context->TEST.ZTE);
 
 	GIFRegTEX0 TEX0;
 
 	TEX0.TBP0 = context->FRAME.Block();
 	TEX0.TBW = context->FRAME.FBW;
 	TEX0.PSM = context->FRAME.PSM;
-	GSTextureCache::Target* rt = m_tc->LookupTarget(TEX0, m_width, m_height, GSTextureCache::RenderTarget, true);
+
+	GSTextureCache::Target* rt = no_rt ? NULL : m_tc->LookupTarget(TEX0, m_width, m_height, GSTextureCache::RenderTarget, true);
+	GSTexture* rt_tex = rt ? rt->m_texture : NULL;
 
 	TEX0.TBP0 = context->ZBUF.Block();
 	TEX0.TBW = context->FRAME.FBW;
 	TEX0.PSM = context->ZBUF.PSM;
 
-	GSTextureCache::Target* ds = m_tc->LookupTarget(TEX0, m_width, m_height, GSTextureCache::DepthStencil, context->DepthWrite());
+	GSTextureCache::Target* ds = no_ds ? NULL : m_tc->LookupTarget(TEX0, m_width, m_height, GSTextureCache::DepthStencil, context->DepthWrite());
+	GSTexture* ds_tex = ds ? ds->m_texture : NULL;
 
-	if(!rt || !ds)
+	if(!(rt || no_rt) || !(ds || no_ds))
 	{
+		GL_POP();
 		ASSERT(0);
-
 		return;
 	}
 
 	GSTextureCache::Source* tex = NULL;
+	m_texture_shuffle = false;
 
 	if(PRIM->TME)
 	{
@@ -380,12 +391,30 @@ void GSRendererHW::Draw()
 
 		tex = m_tc->LookupSource(context->TEX0, env.TEXA, r);
 
-		if(!tex) return;
+		if(!tex) {
+			GL_POP();
+			return;
+		}
 
 		if(GSLocalMemory::m_psm[context->TEX0.PSM].pal > 0)
 		{
 			m_mem.m_clut.Read32(context->TEX0, env.TEXA);
 		}
+
+		// Hypothesis: texture shuffle is used as a postprocessing effect so texture will be an old target.
+		// Initially code also tested the RT but it gives too much false-positive
+		//
+		// Both input and output are 16 bits and texture was initially 32 bits!
+		m_texture_shuffle = (context->FRAME.PSM & 0x2) && ((context->TEX0.PSM & 3) == 2) && (m_vt.m_primclass == GS_SPRITE_CLASS) && tex->m_32_bits_fmt;
+
+		// Texture shuffle is not yet supported with strange clamp mode
+		ASSERT(!m_texture_shuffle || (context->CLAMP.WMS < 3 && context->CLAMP.WMT < 3));
+	}
+	if (rt) {
+		// Be sure texture shuffle detection is properly propagated
+		// Otherwise set or clear the flag (Code in texture cache only set the flag)
+		// Note: it is important to clear the flag when RT is used as a real 16 bits target.
+		rt->m_32_bits_fmt = m_texture_shuffle || !(context->FRAME.PSM & 0x2);
 	}
 
 	if(s_dump)
@@ -394,7 +423,15 @@ void GSRendererHW::Draw()
 
 		string s;
 
-		if(s_save && s_n >= s_saven && tex)
+		if (s_n >= s_saven) {
+			// Dump Register state
+			s = format("%05d_context.txt", s_n);
+
+			m_env.Dump(root_hw+s);
+			m_context->Dump(root_hw+s);
+		}
+
+		if(s_savet && s_n >= s_saven && tex)
 		{
 			s = format("%05d_f%lld_tex_%05x_%d_%d%d_%02x_%02x_%02x_%02x.dds",
 				s_n, frame, (int)context->TEX0.TBP0, (int)context->TEX0.PSM,
@@ -418,21 +455,29 @@ void GSRendererHW::Draw()
 		{
 			s = format("%05d_f%lld_rt0_%05x_%d.bmp", s_n, frame, context->FRAME.Block(), context->FRAME.PSM);
 
-			rt->m_texture->Save(root_hw+s);
+			if (rt)
+				rt->m_texture->Save(root_hw+s);
 		}
 
 		if(s_savez && s_n >= s_saven)
 		{
 			s = format("%05d_f%lld_rz0_%05x_%d.bmp", s_n, frame, context->ZBUF.Block(), context->ZBUF.PSM);
 
-			ds->m_texture->Save(root_hw+s);
+			ds_tex->Save(root_hw+s);
 		}
 
 		s_n++;
+
+#ifdef ENABLE_OGL_DEBUG
+	} else {
+		s_n += 2;
+#endif
 	}
 
-	if(m_hacks.m_oi && !(this->*m_hacks.m_oi)(rt->m_texture, ds->m_texture, tex))
+	if(m_hacks.m_oi && !(this->*m_hacks.m_oi)(rt_tex, ds_tex, tex))
 	{
+		s_n += 1; // keep counter sync
+		GL_POP();
 		return;
 	}
 
@@ -456,7 +501,7 @@ void GSRendererHW::Draw()
 	context->FRAME.FBMSK = fm;
 	context->ZBUF.ZMSK = zm != 0;
 
-	// A couple of hack to avoid upscaling issue. So far it seems to impacts only sprite without linear filtering
+	// A couple of hack to avoid upscaling issue. So far it seems to impacts mostly sprite
 	if ((m_upscale_multiplier > 1) && (m_vt.m_primclass == GS_SPRITE_CLASS)) {
 		size_t count = m_vertex.next;
 		GSVertex* v = &m_vertex.buff[0];
@@ -496,7 +541,7 @@ void GSRendererHW::Draw()
 
 	//
 
-	DrawPrims(rt->m_texture, ds->m_texture, tex);
+	DrawPrims(rt_tex, ds_tex, tex);
 
 	//
 
@@ -508,18 +553,22 @@ void GSRendererHW::Draw()
 
 	GSVector4i r = GSVector4i(m_vt.m_min.p.xyxy(m_vt.m_max.p)).rintersect(GSVector4i(context->scissor.in));
 
-	if(fm != 0xffffffff)
+	if(fm != 0xffffffff && rt)
 	{
 		rt->m_valid = rt->m_valid.runion(r);
 
 		m_tc->InvalidateVideoMem(context->offset.fb, r, false);
+
+		m_tc->InvalidateVideoMemType(GSTextureCache::DepthStencil, context->FRAME.Block());
 	}
 
-	if(zm != 0xffffffff)
+	if(zm != 0xffffffff && ds)
 	{
 		ds->m_valid = ds->m_valid.runion(r);
 
 		m_tc->InvalidateVideoMem(context->offset.zb, r, false);
+
+		m_tc->InvalidateVideoMemType(GSTextureCache::RenderTarget, context->ZBUF.Block());
 	}
 
 	//
@@ -539,24 +588,37 @@ void GSRendererHW::Draw()
 		{
 			s = format("%05d_f%lld_rt1_%05x_%d.bmp", s_n, frame, context->FRAME.Block(), context->FRAME.PSM);
 
-			rt->m_texture->Save(root_hw+s);
+			if (rt)
+				rt->m_texture->Save(root_hw+s);
 		}
 
 		if(s_savez && s_n >= s_saven)
 		{
 			s = format("%05d_f%lld_rz1_%05x_%d.bmp", s_n, frame, context->ZBUF.Block(), context->ZBUF.PSM);
 
-			ds->m_texture->Save(root_hw+s);
+			ds_tex->Save(root_hw+s);
 		}
 
 		s_n++;
+
+		if(s_savel > 0 && (s_n - s_saven) > s_savel)
+		{
+			s_dump = 0;
+		}
+#ifdef ENABLE_OGL_DEBUG
+	} else {
+		s_n += 1;
+#endif
 	}
 
 	#ifdef DISABLE_HW_TEXTURE_CACHE
 	
-	m_tc->Read(rt, r);
+	if (rt)
+		m_tc->Read(rt, r);
 
 	#endif
+
+	GL_POP();
 }
 
 // hacks
@@ -587,6 +649,7 @@ GSRendererHW::Hacks::Hacks()
 	m_oi_list.push_back(HackEntry<OI_Ptr>(CRC::SpyroEternalNight, CRC::RegionCount, &GSRendererHW::OI_SpyroEternalNight));
 	m_oi_list.push_back(HackEntry<OI_Ptr>(CRC::TalesOfLegendia, CRC::RegionCount, &GSRendererHW::OI_TalesOfLegendia));
 	m_oi_list.push_back(HackEntry<OI_Ptr>(CRC::SMTNocturne, CRC::RegionCount, &GSRendererHW::OI_SMTNocturne));
+	m_oi_list.push_back(HackEntry<OI_Ptr>(CRC::SuperManReturns, CRC::RegionCount, &GSRendererHW::OI_SuperManReturns));
 
 	m_oo_list.push_back(HackEntry<OO_Ptr>(CRC::DBZBT2, CRC::RegionCount, &GSRendererHW::OO_DBZBT2));
 	m_oo_list.push_back(HackEntry<OO_Ptr>(CRC::MajokkoALaMode2, CRC::RegionCount, &GSRendererHW::OO_MajokkoALaMode2));
@@ -604,13 +667,70 @@ void GSRendererHW::Hacks::SetGameCRC(const CRC::Game& game)
 	m_oo = m_oo_map[hash];
 	m_cu = m_cu_map[hash];
 
-	if(game.flags & CRC::PointListPalette)
-	{
+	if (game.flags & CRC::PointListPalette) {
 		ASSERT(m_oi == NULL);
 
 		m_oi = &GSRendererHW::OI_PointListPalette;
 	}
+
+	bool hack = theApp.GetConfig("UserHacks_ColorDepthClearOverlap", 0) && theApp.GetConfig("UserHacks", 0);
+	if (hack && !m_oi) {
+		// FIXME: Enable this code in the future. I think it could replace
+		// most of the "old" OI hack. So far code was tested on GoW2 & SimpsonsGame with
+		// success
+		m_oi = &GSRendererHW::OI_DoubleHalfClear;
+	}
 }
+
+bool GSRendererHW::OI_DoubleHalfClear(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
+{
+	if ((m_vt.m_primclass == GS_SPRITE_CLASS) && !PRIM->TME && !m_context->ZBUF.ZMSK && (m_context->FRAME.FBW >= 7) && rt) {
+		GSVertex* v = &m_vertex.buff[0];
+
+		//GL_INS("OI_DoubleHalfClear: psm:%x. Z:%d R:%d G:%d B:%d A:%d", m_context->FRAME.PSM,
+		//		v[1].XYZ.Z, v[1].RGBAQ.R, v[1].RGBAQ.G, v[1].RGBAQ.B, v[1].RGBAQ.A);
+
+		// Check it is a clear on the first primitive only
+		if (v[1].XYZ.Z || v[1].RGBAQ.R || v[1].RGBAQ.G || v[1].RGBAQ.B || v[1].RGBAQ.A) {
+			return true;
+		}
+		// Only 32 bits format is supported otherwise it is complicated
+		if (m_context->FRAME.PSM & 2)
+			return true;
+
+		// FIXME might need some rounding
+		// In 32 bits pages are 64x32 pixels. In theory, it must be somethings
+		// like FBW * 64 pixels * ratio / 32 pixels / 2 = FBW * ratio
+		// It is hard to predict the ratio, so I round it to 1. And I use
+		// <= comparison below.
+		uint32 h_pages  = m_context->FRAME.FBW;
+
+		uint32 base;
+		uint32 half;
+		if (m_context->FRAME.FBP > m_context->ZBUF.ZBP) {
+			base = m_context->ZBUF.ZBP;
+			half = m_context->FRAME.FBP;
+		} else {
+			base = m_context->FRAME.FBP;
+			half = m_context->ZBUF.ZBP;
+		}
+
+		if (half <= (base + h_pages * m_context->FRAME.FBW)) {
+			//GL_INS("OI_DoubleHalfClear: base %x half %x. h_pages %d fbw %d", base, half, h_pages, m_context->FRAME.FBW);
+			if (m_context->FRAME.FBP > m_context->ZBUF.ZBP) {
+				m_dev->ClearDepth(ds, 0);
+			} else {
+				m_dev->ClearRenderTarget(rt, 0);
+			}
+			// Don't return false, it will break the rendering. I guess that it misses texture
+			// invalidation
+			//return false;
+		}
+	}
+	return true;
+}
+
+// OI (others input?/implementation?) hacks replace current draw call
 
 bool GSRendererHW::OI_FFXII(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
 {
@@ -1097,6 +1217,32 @@ bool GSRendererHW::OI_PointListPalette(GSTexture* rt, GSTexture* ds, GSTextureCa
 	return true;
 }
 
+bool GSRendererHW::OI_SuperManReturns(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
+{
+	// Instead to use a fullscreen rectangle they use a 32 pixels, 4096 pixels with a FBW of 1.
+	// Technically the FB wrap/overlap on itself...
+	GSDrawingContext* ctx = m_context;
+	GSVertex* v = &m_vertex.buff[0];
+
+	if (!(ctx->FRAME.FBP == ctx->ZBUF.ZBP && !PRIM->TME && !ctx->ZBUF.ZMSK && !ctx->FRAME.FBMSK && m_vt.m_eq.rgba == 0xFFFF))
+		return true;
+
+	// Please kill those crazy devs!
+	ASSERT(m_vertex.next == 2);
+	ASSERT(m_vt.m_primclass == GS_SPRITE_CLASS);
+	ASSERT((v->RGBAQ.A << 24 | v->RGBAQ.B << 16 | v->RGBAQ.G << 8 | v->RGBAQ.R) == (int)v->XYZ.Z);
+
+	// Do a direct write
+	m_dev->ClearRenderTarget(rt, GSVector4(m_vt.m_min.c));
+
+	m_tc->InvalidateVideoMemType(GSTextureCache::DepthStencil, ctx->FRAME.Block());
+
+	return false;
+}
+
+
+// OO (others output?) hacks: invalidate extra local memory after the draw call
+
 void GSRendererHW::OO_DBZBT2()
 {
 	// palette readback (cannot detect yet, when fetching the texture later)
@@ -1133,6 +1279,8 @@ void GSRendererHW::OO_MajokkoALaMode2()
 		InvalidateLocalMem(BITBLTBUF, GSVector4i(0, 0, 16, 16));
 	}
 }
+
+// Can Upscale hacks: disable upscaling for some draw calls
 
 bool GSRendererHW::CU_DBZBT2()
 {

@@ -3,11 +3,13 @@
 #-------------------------------------------------------------------------------
 ## Use cmake package to find module
 find_package(ALSA)
-find_package(BZip2)
 find_package(Gettext) # translation tool
-find_package(Git)
-find_package(JPEG)
+if(EXISTS ${PROJECT_SOURCE_DIR}/.git)
+    find_package(Git)
+endif()
+find_package(LibLZMA)
 find_package(OpenGL)
+find_package(PNG)
 # The requirement of wxWidgets is checked in SelectPcsx2Plugins module
 # Does not require the module (allow to compile non-wx plugins)
 # Force the unicode build (the variable is only supported on cmake 2.8.3 and above)
@@ -60,19 +62,27 @@ find_package(wxWidgets COMPONENTS base core adv)
 find_package(ZLIB)
 
 ## Use pcsx2 package to find module
-include(FindCg)
-include(FindGlew)
 include(FindLibc)
+
+## Only needed by the extra plugins
+if(EXTRA_PLUGINS)
+    find_package(BZip2)
+    include(FindCg)
+    include(FindGlew)
+    find_package(JPEG)
+endif()
 
 ## Use CheckLib package to find module
 include(CheckLib)
 if(Linux)
     check_lib(AIO aio libaio.h)
 endif()
-check_lib(EGL EGL EGL/egl.h)
-check_lib(GLESV2 GLESv2 GLES3/gl3ext.h) # NOTE: looking for GLESv3, not GLESv2
+if(EGL_API)
+    check_lib(EGL EGL EGL/egl.h)
+endif()
 check_lib(PORTAUDIO portaudio portaudio.h pa_linux_alsa.h)
 check_lib(SOUNDTOUCH SoundTouch soundtouch/SoundTouch.h)
+check_lib(PNGPP FALSE png++/png.hpp)
 
 if(SDL2_API)
     check_lib(SDL2 SDL2 SDL.h PATH_SUFFIXES SDL2)

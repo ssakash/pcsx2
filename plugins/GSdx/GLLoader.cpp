@@ -22,7 +22,6 @@
 #include "GLLoader.h"
 #include "GSdx.h"
 
-#ifndef ENABLE_GLES
 PFNGLACTIVETEXTUREPROC                 gl_ActiveTexture                     = NULL;
 PFNGLBLENDCOLORPROC                    gl_BlendColor                        = NULL;
 PFNGLATTACHSHADERPROC                  gl_AttachShader                      = NULL;
@@ -85,8 +84,9 @@ PFNGLFENCESYNCPROC                     gl_FenceSync                         = NU
 PFNGLDELETESYNCPROC                    gl_DeleteSync                        = NULL;
 PFNGLCLIENTWAITSYNCPROC                gl_ClientWaitSync                    = NULL;
 PFNGLFLUSHMAPPEDBUFFERRANGEPROC        gl_FlushMappedBufferRange            = NULL;
+PFNGLBLENDEQUATIONSEPARATEPROC         gl_BlendEquationSeparate             = NULL;
+PFNGLBLENDFUNCSEPARATEPROC             gl_BlendFuncSeparate                 = NULL;
 // GL4.0
-PFNGLUNIFORMSUBROUTINESUIVPROC         gl_UniformSubroutinesuiv             = NULL;
 // GL4.1
 PFNGLBINDPROGRAMPIPELINEPROC           gl_BindProgramPipeline               = NULL;
 PFNGLGENPROGRAMPIPELINESPROC           gl_GenProgramPipelines               = NULL;
@@ -94,6 +94,7 @@ PFNGLDELETEPROGRAMPIPELINESPROC        gl_DeleteProgramPipelines            = NU
 PFNGLGETPROGRAMPIPELINEIVPROC          gl_GetProgramPipelineiv              = NULL;
 PFNGLVALIDATEPROGRAMPIPELINEPROC       gl_ValidateProgramPipeline           = NULL;
 PFNGLGETPROGRAMPIPELINEINFOLOGPROC     gl_GetProgramPipelineInfoLog         = NULL;
+PFNGLGETPROGRAMBINARYPROC              gl_GetProgramBinary                  = NULL;
 // NO GL4.1
 PFNGLUSEPROGRAMPROC                    gl_UseProgram                        = NULL;
 PFNGLGETSHADERINFOLOGPROC              gl_GetShaderInfoLog                  = NULL;
@@ -101,18 +102,16 @@ PFNGLPROGRAMUNIFORM1IPROC              gl_ProgramUniform1i                  = NU
 // GL4.3
 PFNGLCOPYIMAGESUBDATAPROC              gl_CopyImageSubData                  = NULL;
 PFNGLINVALIDATETEXIMAGEPROC            gl_InvalidateTexImage                = NULL;
+PFNGLPUSHDEBUGGROUPPROC                gl_PushDebugGroup                    = NULL;
+PFNGLPOPDEBUGGROUPPROC                 gl_PopDebugGroup                     = NULL;
+PFNGLDEBUGMESSAGEINSERTPROC            gl_DebugMessageInsert                = NULL;
 // GL4.2
 PFNGLBINDIMAGETEXTUREPROC              gl_BindImageTexture                  = NULL;
 PFNGLMEMORYBARRIERPROC                 gl_MemoryBarrier                     = NULL;
 PFNGLTEXSTORAGE2DPROC                  gl_TexStorage2D                      = NULL;
 // GL4.4
+PFNGLCLEARTEXIMAGEPROC                 gl_ClearTexImage                     = NULL;
 PFNGLBUFFERSTORAGEPROC                 gl_BufferStorage                     = NULL;
-// GL_ARB_bindless_texture (GL5?)
-PFNGLGETTEXTURESAMPLERHANDLEARBPROC    gl_GetTextureSamplerHandleARB        = NULL;
-PFNGLMAKETEXTUREHANDLERESIDENTARBPROC  gl_MakeTextureHandleResidentARB      = NULL;
-PFNGLMAKETEXTUREHANDLENONRESIDENTARBPROC gl_MakeTextureHandleNonResidentARB = NULL;
-PFNGLUNIFORMHANDLEUI64VARBPROC         gl_UniformHandleui64vARB             = NULL;
-PFNGLPROGRAMUNIFORMHANDLEUI64VARBPROC  gl_ProgramUniformHandleui64vARB      = NULL;
 
 // GL4.5
 PFNGLCREATETEXTURESPROC				   gl_CreateTextures                    = NULL;
@@ -121,6 +120,7 @@ PFNGLTEXTURESUBIMAGE2DPROC			   gl_TextureSubImage2D                 = NULL;
 PFNGLCOPYTEXTURESUBIMAGE2DPROC		   gl_CopyTextureSubImage2D             = NULL;
 PFNGLBINDTEXTUREUNITPROC			   gl_BindTextureUnit                   = NULL;
 PFNGLGETTEXTUREIMAGEPROC               gl_GetTextureImage                   = NULL;
+PFNGLTEXTUREPARAMETERIPROC             gl_TextureParameteri                 = NULL;
 
 PFNGLCREATEFRAMEBUFFERSPROC            gl_CreateFramebuffers                = NULL;
 PFNGLCLEARNAMEDFRAMEBUFFERFVPROC       gl_ClearNamedFramebufferfv           = NULL;
@@ -145,8 +145,6 @@ PFNGLCREATEPROGRAMPIPELINESPROC        gl_CreateProgramPipelines            = NU
 
 PFNGLCLIPCONTROLPROC                   gl_ClipControl                       = NULL;
 PFNGLTEXTUREBARRIERPROC                gl_TextureBarrier                    = NULL;
-
-#endif
 
 namespace Emulate_DSA {
 	// Texture entry point
@@ -177,6 +175,11 @@ namespace Emulate_DSA {
 	void APIENTRY GetTexureImage(GLuint texture, GLint level, GLenum format, GLenum type, GLsizei bufSize, void *pixels) {
 		BindTextureUnit(7, texture);
 		glGetTexImage(GL_TEXTURE_2D, level, format, type, pixels);
+	}
+
+	void APIENTRY TextureParameteri (GLuint texture, GLenum pname, GLint param) {
+		BindTextureUnit(7, texture);
+		glTexParameteri(GL_TEXTURE_2D, pname, param);
 	}
 
 	// Framebuffer entry point
@@ -217,6 +220,7 @@ namespace Emulate_DSA {
 	void APIENTRY NamedFramebufferReadBuffer(GLuint framebuffer, GLenum src) {
 		gl_BindFramebuffer(fb_target, framebuffer);
 		glReadBuffer(src);
+		gl_BindFramebuffer(fb_target, 0);
 	}
 
 	GLenum APIENTRY CheckNamedFramebufferStatus(GLuint framebuffer, GLenum target) {
@@ -281,13 +285,14 @@ namespace Emulate_DSA {
 
 	// Replace function pointer to emulate DSA behavior
 	void Init() {
-		fprintf(stderr, "DSA is not supported. Replace GL function pointer to emulate it\n");
+		fprintf(stderr, "DSA is not supported. Replacing the GL function pointer to emulate it\n");
 		gl_BindTextureUnit             = BindTextureUnit;
 		gl_CreateTextures              = CreateTexture;
 		gl_TextureStorage2D            = TextureStorage;
 		gl_TextureSubImage2D           = TextureSubImage;
 		gl_CopyTextureSubImage2D       = CopyTextureSubImage;
 		gl_GetTextureImage             = GetTexureImage;
+		gl_TextureParameteri           = TextureParameteri;
 
 		gl_CreateFramebuffers          = CreateFramebuffers;
 		gl_ClearNamedFramebufferfv     = ClearNamedFramebufferfv;
@@ -319,26 +324,21 @@ namespace GLLoader {
 	bool intel_buggy_driver    = false;
 	bool in_replayer           = false;
 
-	// Optional
+
+	// GL4 hardware (due to proprietary driver limitation)
 	bool found_GL_ARB_separate_shader_objects = false; // Issue with Mesa and Catalyst...
 	bool found_geometry_shader = true; // we require GL3.3 so geometry must be supported by default
-	// Note: except Apple, all drivers support explicit uniform location
-	bool found_GL_ARB_explicit_uniform_location = false; // need by subroutine and bindless texture
-	// GL4 hardware
+	bool found_GL_EXT_texture_filter_anisotropic = false;
+	bool found_GL_ARB_clear_texture = false; // Don't know if GL3 GPU can support it
 	bool found_GL_ARB_buffer_storage = false;
 	bool found_GL_ARB_copy_image = false; // Not sure actually maybe GL3 GPU can do it
 	bool found_GL_ARB_gpu_shader5 = false;
 	bool found_GL_ARB_shader_image_load_store = false; // GLES3.1
-	bool found_GL_ARB_shader_subroutine = false;
-	bool found_GL_ARB_bindless_texture = false; // GL5 GPU?
 	bool found_GL_ARB_texture_barrier = false; // Well maybe supported by older hardware I don't know
-
-	// GL4.5 for the future (dx10/dx11 compatibility)
+	// DX10 GPU limited driver
+	bool found_GL_ARB_draw_buffers_blend = false;
 	bool found_GL_ARB_clip_control = false;
 	bool found_GL_ARB_direct_state_access = false;
-
-	// Mandatory for opengl ES (allow to use GL code)
-	bool found_GL_EXT_shader_io_blocks = false;
 
 	// Mandatory
 	bool found_GL_ARB_texture_storage = false;
@@ -346,13 +346,15 @@ namespace GLLoader {
 
 	static bool status_and_override(bool& found, const std::string& name, bool mandatory = false)
 	{
-		if (!found) {
-			if(mandatory) {
+		if (mandatory) {
+			if (!found) {
 				fprintf(stderr, "ERROR: %s is NOT SUPPORTED\n", name.c_str());
-				return false;
-			} else {
-				fprintf(stderr, "INFO: %s is NOT SUPPORTED\n", name.c_str());
 			}
+			return found;
+		}
+
+		if (!found) {
+			fprintf(stderr, "INFO: %s is NOT SUPPORTED\n", name.c_str());
 		} else {
 			fprintf(stderr, "INFO: %s is available\n", name.c_str());
 		}
@@ -368,57 +370,52 @@ namespace GLLoader {
 		return true;
 	}
 
-    bool check_gl_version(uint32 major, uint32 minor) {
+    bool check_gl_version(int major, int minor) {
 
 		const GLubyte* s = glGetString(GL_VERSION);
 		if (s == NULL) {
 			fprintf(stderr, "Error: GLLoader failed to get GL version\n");
 			return false;
 		}
+		GLuint v = 1;
+		while (s[v] != '\0' && s[v-1] != ' ') v++;
 
 		const char* vendor = (const char*)glGetString(GL_VENDOR);
-		fprintf(stderr, "Supported Opengl version: %s on GPU: %s. Vendor: %s\n", s, glGetString(GL_RENDERER), vendor);
-#ifndef ENABLE_GLES
-		fprintf(stderr, "Note: the maximal version supported by GSdx is 3.3 (even if you driver support more)!\n");
-#endif
+		fprintf(stderr, "OpenGL information. GPU: %s. Vendor: %s. Driver: %s\n", glGetString(GL_RENDERER), vendor, &s[v]);
 
-		// Name change but driver is still bad!
+		// Name changed but driver is still bad!
 		if (strstr(vendor, "ATI") || strstr(vendor, "Advanced Micro Devices"))
 			fglrx_buggy_driver = true;
 		if (strstr(vendor, "NVIDIA Corporation"))
 			nvidia_buggy_driver = true;
 		if (strstr(vendor, "Intel"))
 			intel_buggy_driver = true;
-		if (strstr(vendor, "X.Org")) // Note: it might actually catch nouveau too, but bug are likely to be the same anyway
+		if (strstr(vendor, "X.Org") || strstr(vendor, "nouveau")) // Note: it might actually catch nouveau too, but bugs are likely to be the same anyway
 			mesa_amd_buggy_driver = true;
 		if (strstr(vendor, "VMware")) // Assume worst case because I don't know the real status
 			mesa_amd_buggy_driver = intel_buggy_driver = true;
+#ifdef _WINDOWS
+		if (intel_buggy_driver)
+			return false; // too much buggy no need to check anything.
+#endif
 
-		GLuint dot = 0;
-		while (s[dot] != '\0' && s[dot] != '.') dot++;
-		if (dot == 0) return false;
-
-		GLuint major_gl = s[dot-1]-'0';
-		GLuint minor_gl = s[dot+1]-'0';
-
-#ifndef ENABLE_GLES
-		if (mesa_amd_buggy_driver || intel_buggy_driver) {
+		if (mesa_amd_buggy_driver) {
 			fprintf(stderr, "Buggy driver detected. Geometry shaders will be disabled\n");
 			found_geometry_shader = false;
 		}
 		if (theApp.GetConfig("override_geometry_shader", -1) != -1) {
 			found_geometry_shader = !!theApp.GetConfig("override_geometry_shader", -1);
-			fprintf(stderr, "Override geometry shaders detection\n");
+			fprintf(stderr, "Overriding geometry shaders detection\n");
 		}
-#else
-		found_geometry_shader = false;
-#endif
-#ifndef ENABLE_GLES
+
+		GLint major_gl = 0;
+		GLint minor_gl = 0;
+		glGetIntegerv(GL_MAJOR_VERSION, &major_gl);
+		glGetIntegerv(GL_MINOR_VERSION, &minor_gl);
 		if ( (major_gl < major) || ( major_gl == major && minor_gl < minor ) ) {
-			fprintf(stderr, "OPENGL %d.%d is not supported\n", major, minor);
+			fprintf(stderr, "OpenGL %d.%d is not supported. Only OpenGL %d.%d\n was found", major, minor, major_gl, minor_gl);
 			return false;
 		}
-#endif
 
         return true;
     }
@@ -430,47 +427,29 @@ namespace GLLoader {
 		if (gl_GetStringi && max_ext) {
 			for (GLint i = 0; i < max_ext; i++) {
 				string ext((const char*)gl_GetStringi(GL_EXTENSIONS, i));
-#ifndef ENABLE_GLES
+				// Bonus
+				if (ext.compare("GL_EXT_texture_filter_anisotropic") == 0) found_GL_EXT_texture_filter_anisotropic = true;
 				// GL4.0
 				if (ext.compare("GL_ARB_gpu_shader5") == 0) found_GL_ARB_gpu_shader5 = true;
+				if (ext.compare("GL_ARB_draw_buffers_blend") == 0) found_GL_ARB_draw_buffers_blend = true;
 				// GL4.1
 				if (ext.compare("GL_ARB_separate_shader_objects") == 0) {
 					if (!fglrx_buggy_driver && !mesa_amd_buggy_driver && !intel_buggy_driver) found_GL_ARB_separate_shader_objects = true;
 					else fprintf(stderr, "Buggy driver detected, GL_ARB_separate_shader_objects will be disabled\n");
 				}
-#if 0
-				// Erratum: on nvidia implementation, gain is very nice : 42.5 fps => 46.5 fps
-				//
-				// Strangely it doesn't provide the speed boost as expected.
-				// Note: only atst/colclip was replaced with subroutine for the moment. It replace 2000 program switch on
-				// colin mcrae 3 by 2100 uniform, but code is slower!
-				//
-				// Current hypothesis: the validation of useprogram is done in the "driver thread" whereas the extra function calls
-				// are done on the overloaded main threads.
-				// Apitrace profiling shows faster GPU draw times
-
-				if (ext.compare("GL_ARB_shader_subroutine") == 0) found_GL_ARB_shader_subroutine = true;
-#endif
 				// GL4.2
 				if (ext.compare("GL_ARB_shading_language_420pack") == 0) found_GL_ARB_shading_language_420pack = true;
 				if (ext.compare("GL_ARB_texture_storage") == 0) found_GL_ARB_texture_storage = true;
-				// Only enable this extension on nvidia
-				// It is too costly on perf (big upscaling), code need to updated to reduce the number of draw stage
-				//if (nvidia_buggy_driver && ext.compare("GL_ARB_shader_image_load_store") == 0) found_GL_ARB_shader_image_load_store = true;
+				if (ext.compare("GL_ARB_shader_image_load_store") == 0) found_GL_ARB_shader_image_load_store = true;
 				// GL4.3
 				if (ext.compare("GL_ARB_copy_image") == 0) found_GL_ARB_copy_image = true;
-				if (ext.compare("GL_ARB_explicit_uniform_location") == 0) found_GL_ARB_explicit_uniform_location = true;
 				// GL4.4
 				if (ext.compare("GL_ARB_buffer_storage") == 0) found_GL_ARB_buffer_storage = true;
-				// FIXME: I have a crash when I hit pause (debug build)
-				//if (ext.compare("GL_ARB_bindless_texture") == 0) found_GL_ARB_bindless_texture = true;
+				if (ext.compare("GL_ARB_clear_texture") == 0) found_GL_ARB_clear_texture = true;
 				// GL4.5
 				if (ext.compare("GL_ARB_direct_state_access") == 0) found_GL_ARB_direct_state_access = true;
 				if (ext.compare("GL_ARB_clip_control") == 0) found_GL_ARB_clip_control = true;
 				if (ext.compare("GL_ARB_texture_barrier") == 0) found_GL_ARB_texture_barrier = true;
-#else // ENABLE_GLES
-				if (ext.compare("GL_EXT_shader_io_blocks") == 0) found_GL_EXT_shader_io_blocks = true;
-#endif
 
 				//fprintf(stderr, "DEBUG ext: %s\n", ext.c_str());
 			}
@@ -479,36 +458,39 @@ namespace GLLoader {
 		bool status = true;
 		fprintf(stderr, "\n");
 
-#ifndef ENABLE_GLES
+		// Bonus
+		status &= status_and_override(found_GL_EXT_texture_filter_anisotropic, "GL_EXT_texture_filter_anisotropic");
 		// GL4.0
-		status &= status_and_override(found_GL_ARB_gpu_shader5,"GL_ARB_gpu_shader5");
+		status &= status_and_override(found_GL_ARB_gpu_shader5, "GL_ARB_gpu_shader5");
+		status &= status_and_override(found_GL_ARB_draw_buffers_blend, "GL_ARB_draw_buffers_blend");
 		// GL4.1
-		status &= status_and_override(found_GL_ARB_separate_shader_objects,"GL_ARB_separate_shader_objects");
-		status &= status_and_override(found_GL_ARB_shader_subroutine,"GL_ARB_shader_subroutine");
+		status &= status_and_override(found_GL_ARB_separate_shader_objects, "GL_ARB_separate_shader_objects");
 		// GL4.2
-		status &= status_and_override(found_GL_ARB_shader_image_load_store,"GL_ARB_shader_image_load_store");
-		status &= status_and_override(found_GL_ARB_shading_language_420pack,"GL_ARB_shading_language_420pack", true);
+		status &= status_and_override(found_GL_ARB_shader_image_load_store, "GL_ARB_shader_image_load_store");
+		status &= status_and_override(found_GL_ARB_shading_language_420pack, "GL_ARB_shading_language_420pack", true);
 		status &= status_and_override(found_GL_ARB_texture_storage, "GL_ARB_texture_storage", true);
 		// GL4.3
-		status &= status_and_override(found_GL_ARB_explicit_uniform_location,"GL_ARB_explicit_uniform_location");
 		status &= status_and_override(found_GL_ARB_copy_image, "GL_ARB_copy_image");
 		// GL4.4
 		status &= status_and_override(found_GL_ARB_buffer_storage,"GL_ARB_buffer_storage");
-		status &= status_and_override(found_GL_ARB_bindless_texture,"GL_ARB_bindless_texture");
+		status &= status_and_override(found_GL_ARB_clear_texture,"GL_ARB_clear_texture");
 		// GL4.5
 		status &= status_and_override(found_GL_ARB_clip_control, "GL_ARB_clip_control");
 		status &= status_and_override(found_GL_ARB_direct_state_access, "GL_ARB_direct_state_access");
 		status &= status_and_override(found_GL_ARB_texture_barrier, "GL_ARB_texture_barrier");
-#else // ENABLE_GLES
-		status &= status_and_override(found_GL_EXT_shader_io_blocks, "GL_EXT_shader_io_blocks", true);
-#endif
+
 		if (!found_GL_ARB_direct_state_access) {
 			Emulate_DSA::Init();
 		}
-
 		if (gl_BindTextureUnit == NULL) {
 			fprintf(stderr, "FATAL ERROR !!!! Failed to setup DSA function pointer!!!\n");
 			status = false;
+		}
+
+		if (!found_GL_ARB_texture_barrier) {
+			fprintf(stderr, "Error GL_ARB_texture_barrier is not supported by your driver. You can't emulate correctly the GS blending unit! Sorry!\n");
+			theApp.SetConfig("accurate_blending_unit", 0);
+			theApp.SetConfig("accurate_date", 0);
 		}
 
 		fprintf(stderr, "\n");

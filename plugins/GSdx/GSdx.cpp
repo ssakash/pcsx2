@@ -162,11 +162,36 @@ GSdxApp::GSdxApp()
 	m_gs_upscale_multiplier.push_back(GSSetting(5, "5x Native", ""));
 	m_gs_upscale_multiplier.push_back(GSSetting(6, "6x Native", ""));
 
-	m_gs_max_anisotropy.push_back(GSSetting(1, "1x", ""));
+	m_gs_max_anisotropy.push_back(GSSetting(1, "1x", "Off"));
 	m_gs_max_anisotropy.push_back(GSSetting(2, "2x", ""));
 	m_gs_max_anisotropy.push_back(GSSetting(4, "4x", ""));
 	m_gs_max_anisotropy.push_back(GSSetting(8, "8x", ""));
 	m_gs_max_anisotropy.push_back(GSSetting(16, "16x", ""));
+
+	m_gs_filter.push_back(GSSetting(0, "Nearest", ""));
+	m_gs_filter.push_back(GSSetting(1, "Bilinear", "Forced"));
+	m_gs_filter.push_back(GSSetting(2, "Bilinear", "PS2"));
+
+	m_gs_gl_ext.push_back(GSSetting(-1, "Auto", ""));
+	m_gs_gl_ext.push_back(GSSetting(0,  "Force-Disabled", ""));
+	m_gs_gl_ext.push_back(GSSetting(1,  "Force-Enabled", ""));
+
+	m_gs_hack.push_back(GSSetting(0,  "Off", ""));
+	m_gs_hack.push_back(GSSetting(1,  "Halfly On", ""));
+	m_gs_hack.push_back(GSSetting(2,  "Fully On", ""));
+
+	m_gs_crc_level.push_back(GSSetting(0 , "None", "Debug"));
+	m_gs_crc_level.push_back(GSSetting(1 , "Minimum", "Debug"));
+	m_gs_crc_level.push_back(GSSetting(2 , "Partial", "openGL recommended"));
+	m_gs_crc_level.push_back(GSSetting(3 , "Full", "Safest"));
+	m_gs_crc_level.push_back(GSSetting(4 , "Aggressive", ""));
+
+	m_gs_acc_blend_level.push_back(GSSetting(0, "None", "Fastest"));
+	m_gs_acc_blend_level.push_back(GSSetting(1, "Basic", "Recommended low-end PC"));
+	m_gs_acc_blend_level.push_back(GSSetting(2, "Medium", ""));
+	m_gs_acc_blend_level.push_back(GSSetting(3, "High", "Recommended high-end PC"));
+	m_gs_acc_blend_level.push_back(GSSetting(4, "Full", "Very Slow"));
+	m_gs_acc_blend_level.push_back(GSSetting(5, "Ultra", "Ultra Slow"));
 
 	m_gpu_renderers.push_back(GSSetting(0, "Direct3D9 (Software)", ""));
 	m_gpu_renderers.push_back(GSSetting(1, "Direct3D11 (Software)", ""));

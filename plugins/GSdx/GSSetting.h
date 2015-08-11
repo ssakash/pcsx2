@@ -1,5 +1,5 @@
 /*
- *	Copyright (C) 2007-2009 Gabest
+ *	Copyright (C) 2007-2015 Gabest
  *	http://www.gabest.org
  *
  *  This Program is free software; you can redistribute it and/or modify
@@ -42,6 +42,7 @@ const char* dialog_message(int ID, bool* updateText = NULL);
 
 #ifdef __linux__
 enum {
+	IDC_FILTER,
 	IDC_SKIPDRAWHACK,
 	IDC_SKIPDRAWHACKEDIT,
 	IDC_STATIC_SKIPDRAW,
@@ -51,17 +52,20 @@ enum {
 	IDC_WILDHACK,
 	IDC_MSAACB,
 	IDC_STATIC_MSAA,
-	IDC_AGGRESSIVECRC,
 	IDC_ALPHASTENCIL,
-	IDC_CHECK_NVIDIA_HACK,
 	IDC_CHECK_DISABLE_ALL_HACKS,
 	IDC_ALIGN_SPRITE,
-	IDC_STRETCH_SPRITE,
+	IDC_ROUND_SPRITE,
 	IDC_TCOFFSETX,
 	IDC_TCOFFSETX2,
 	IDC_STATIC_TCOFFSETX,
 	IDC_TCOFFSETY,
 	IDC_TCOFFSETY2,
-	IDC_STATIC_TCOFFSETY
+	IDC_STATIC_TCOFFSETY,
+	IDC_PALTEX,
+	IDC_ACCURATE_BLEND_UNIT,
+	IDC_ACCURATE_DATE,
+	IDC_TC_DEPTH,
+	IDC_CRC_LEVEL
 };
 #endif

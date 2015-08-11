@@ -253,9 +253,9 @@ GSTexture* GSRendererSW::GetOutput(int i)
 
 		if(s_dump)
 		{
-			if(s_save && s_n >= s_saven)
+			if(s_savef && s_n >= s_saven)
 			{
-				m_texture[i]->Save(root_sw + format("c:\\temp1\\_%05d_f%lld_fr%d_%05x_%d.bmp", s_n, m_perfmon.GetFrame(), i, (int)DISPFB.Block(), (int)DISPFB.PSM));
+				m_texture[i]->Save(root_sw + format("%05d_f%lld_fr%d_%05x_%d.bmp", s_n, m_perfmon.GetFrame(), i, (int)DISPFB.Block(), (int)DISPFB.PSM));
 			}
 
 			s_n++;
@@ -336,7 +336,7 @@ void GSRendererSW::ConvertVertexBuffer(GSVertexSW* RESTRICT dst, const GSVertex*
 
 	#else
 	
-	GSVector4i o = (GSVector4i)m_context->XYOFFSET;
+	GSVector4i off = (GSVector4i)m_context->XYOFFSET;
 	GSVector4 tsize = GSVector4(0x10000 << m_context->TEX0.TW, 0x10000 << m_context->TEX0.TH, 1, 0);
 
 	for(int i = (int)m_vertex.next; i > 0; i--, src++, dst++)
@@ -347,14 +347,14 @@ void GSRendererSW::ConvertVertexBuffer(GSVertexSW* RESTRICT dst, const GSVertex*
 
 		GSVector4i xyzuvf(src->m[1]);
 
-		GSVector4i xy = xyzuvf.upl16() - o;
+		GSVector4i xy = xyzuvf.upl16() - off;
 		GSVector4i zf = xyzuvf.ywww().min_u32(GSVector4i::xffffff00());
 
 		#else
 
 		uint32 z = src->XYZ.Z;
 
-		GSVector4i xy = GSVector4i::load((int)src->XYZ.u32[0]).upl16() - o;
+		GSVector4i xy = GSVector4i::load((int)src->XYZ.u32[0]).upl16() - off;
 		GSVector4i zf = GSVector4i((int)std::min<uint32>(z, 0xffffff00), src->FOG); // NOTE: larger values of z may roll over to 0 when converting back to uint32 later
 
 		#endif
@@ -447,7 +447,11 @@ void GSRendererSW::Draw()
 	sd->bbox = bbox;
 	sd->frame = m_perfmon.GetFrame();
 
-	if(!GetScanlineGlobalData(sd)) return;
+	if(!GetScanlineGlobalData(sd))
+	{
+		s_n += 3; // Keep it sync with HW renderer
+		return;
+	}
 
 	if(0) if(LOG)
 	{
@@ -513,23 +517,51 @@ void GSRendererSW::Draw()
 		Sync(2);
 
 		uint64 frame = m_perfmon.GetFrame();
+		// Dump the texture in 32 bits format. It helps to debug texture shuffle effect
+		// It will breaks the few games that really uses 16 bits RT
+		bool texture_shuffle = ((context->FRAME.PSM & 0x2) && ((context->TEX0.PSM & 3) == 2) && (m_vt.m_primclass == GS_SPRITE_CLASS));
 
 		string s;
 
-		if(s_save && s_n >= s_saven && PRIM->TME)
+		if(s_n >= s_saven)
 		{
-			s = format("%05d_f%lld_tex_%05x_%d.bmp", s_n, frame, (int)m_context->TEX0.TBP0, (int)m_context->TEX0.PSM);
+			// Dump Register state
+			s = format("%05d_context.txt", s_n);
 
-			m_mem.SaveBMP(root_sw+s, m_context->TEX0.TBP0, m_context->TEX0.TBW, m_context->TEX0.PSM, 1 << m_context->TEX0.TW, 1 << m_context->TEX0.TH);
+			m_env.Dump(root_sw+s);
+			m_context->Dump(root_sw+s);
+		}
+
+		if(s_savet && s_n >= s_saven && PRIM->TME)
+		{
+			if (texture_shuffle) {
+				// Dump the RT in 32 bits format. It helps to debug texture shuffle effect
+				s = format("%05d_f%lld_tex_%05x_32bits.bmp", s_n, frame, (int)m_context->TEX0.TBP0);
+
+				m_mem.SaveBMP(root_sw+s, m_context->TEX0.TBP0, m_context->TEX0.TBW, 0, 1 << m_context->TEX0.TW, 1 << m_context->TEX0.TH);
+			} else {
+				s = format("%05d_f%lld_tex_%05x_%d.bmp", s_n, frame, (int)m_context->TEX0.TBP0, (int)m_context->TEX0.PSM);
+
+				m_mem.SaveBMP(root_sw+s, m_context->TEX0.TBP0, m_context->TEX0.TBW, m_context->TEX0.PSM, 1 << m_context->TEX0.TW, 1 << m_context->TEX0.TH);
+			}
+
 		}
 
 		s_n++;
 
 		if(s_save && s_n >= s_saven)
 		{
-			s = format("%05d_f%lld_rt0_%05x_%d.bmp", s_n, frame, m_context->FRAME.Block(), m_context->FRAME.PSM);
 
-			m_mem.SaveBMP(root_sw+s, m_context->FRAME.Block(), m_context->FRAME.FBW, m_context->FRAME.PSM, GetFrameRect().width(), 512);
+			if (texture_shuffle) {
+				// Dump the RT in 32 bits format. It helps to debug texture shuffle effect
+				s = format("%05d_f%lld_rt0_%05x_32bits.bmp", s_n, frame, m_context->FRAME.Block());
+
+				m_mem.SaveBMP(root_sw+s, m_context->FRAME.Block(), m_context->FRAME.FBW, 0, GetFrameRect().width(), 512);
+			} else {
+				s = format("%05d_f%lld_rt0_%05x_%d.bmp", s_n, frame, m_context->FRAME.Block(), m_context->FRAME.PSM);
+
+				m_mem.SaveBMP(root_sw+s, m_context->FRAME.Block(), m_context->FRAME.FBW, m_context->FRAME.PSM, GetFrameRect().width(), 512);
+			}
 		}
 
 		if(s_savez && s_n >= s_saven)
@@ -547,9 +579,16 @@ void GSRendererSW::Draw()
 
 		if(s_save && s_n >= s_saven)
 		{
-			s = format("%05d_f%lld_rt1_%05x_%d.bmp", s_n, frame, m_context->FRAME.Block(), m_context->FRAME.PSM);
+			if (texture_shuffle) {
+				// Dump the RT in 32 bits format. It helps to debug texture shuffle effect
+				s = format("%05d_f%lld_rt1_%05x_32bits.bmp", s_n, frame, m_context->FRAME.Block());
 
-			m_mem.SaveBMP(root_sw+s, m_context->FRAME.Block(), m_context->FRAME.FBW, m_context->FRAME.PSM, GetFrameRect().width(), 512);
+				m_mem.SaveBMP(root_sw+s, m_context->FRAME.Block(), m_context->FRAME.FBW, 0, GetFrameRect().width(), 512);
+			} else {
+				s = format("%05d_f%lld_rt1_%05x_%d.bmp", s_n, frame, m_context->FRAME.Block(), m_context->FRAME.PSM);
+
+				m_mem.SaveBMP(root_sw+s, m_context->FRAME.Block(), m_context->FRAME.FBW, m_context->FRAME.PSM, GetFrameRect().width(), 512);
+			}
 		}
 
 		if(s_savez && s_n >= s_saven)
@@ -560,6 +599,11 @@ void GSRendererSW::Draw()
 		}
 
 		s_n++;
+
+		if(s_savel > 0 && (s_n - s_saven) > s_savel)
+		{
+			s_dump = 0;
+		}
 	}
 	else
 	{
@@ -669,9 +713,9 @@ void GSRendererSW::InvalidateVideoMem(const GIFRegBITBLTBUF& BITBLTBUF, const GS
 {
 	if(LOG) {fprintf(s_fp, "w %05x %d %d, %d %d %d %d\n", BITBLTBUF.DBP, BITBLTBUF.DBW, BITBLTBUF.DPSM, r.x, r.y, r.z, r.w); fflush(s_fp);}
 	
-	GSOffset* o = m_mem.GetOffset(BITBLTBUF.DBP, BITBLTBUF.DBW, BITBLTBUF.DPSM);
+	GSOffset* off = m_mem.GetOffset(BITBLTBUF.DBP, BITBLTBUF.DBW, BITBLTBUF.DPSM);
 
-	o->GetPages(r, m_tmp_pages);
+	off->GetPages(r, m_tmp_pages);
 
 	// check if the changing pages either used as a texture or a target
 
@@ -688,7 +732,7 @@ void GSRendererSW::InvalidateVideoMem(const GIFRegBITBLTBUF& BITBLTBUF, const GS
 		}
 	}
 
-	m_tc->InvalidatePages(m_tmp_pages, o->psm); // if texture update runs on a thread and Sync(5) happens then this must come later
+	m_tc->InvalidatePages(m_tmp_pages, off->psm); // if texture update runs on a thread and Sync(5) happens then this must come later
 }
 
 void GSRendererSW::InvalidateLocalMem(const GIFRegBITBLTBUF& BITBLTBUF, const GSVector4i& r, bool clut)
@@ -697,9 +741,9 @@ void GSRendererSW::InvalidateLocalMem(const GIFRegBITBLTBUF& BITBLTBUF, const GS
 
 	if(!m_rl->IsSynced())
 	{
-		GSOffset* o = m_mem.GetOffset(BITBLTBUF.SBP, BITBLTBUF.SBW, BITBLTBUF.SPSM);
+		GSOffset* off = m_mem.GetOffset(BITBLTBUF.SBP, BITBLTBUF.SBW, BITBLTBUF.SPSM);
 
-		o->GetPages(r, m_tmp_pages);
+		off->GetPages(r, m_tmp_pages);
 
 		for(uint32* RESTRICT p = m_tmp_pages; *p != GSOffset::EOP; p++)
 		{
@@ -1077,19 +1121,23 @@ bool GSRendererSW::GetScanlineGlobalData(SharedData* data)
 				gd.sel.tfx = TFX_DECAL;
 			}
 
-			GSTextureCacheSW::Texture* t = m_tc->Lookup(context->TEX0, env.TEXA);
+			bool mipmap = IsMipMapActive();
 
-			if(t == NULL) {ASSERT(0); return false;}
+			GIFRegTEX0 TEX0 = m_context->GetSizeFixedTEX0(m_vt.m_min.t.xyxy(m_vt.m_max.t), m_vt.IsLinear(), mipmap);
 
 			GSVector4i r;
 
-			GetTextureMinMax(r, context->TEX0, context->CLAMP, gd.sel.ltf);
+			GetTextureMinMax(r, TEX0, context->CLAMP, gd.sel.ltf);
+
+			GSTextureCacheSW::Texture* t = m_tc->Lookup(TEX0, env.TEXA);
+
+			if(t == NULL) {ASSERT(0); return false;}
 
 			data->SetSource(t, r, 0);
 
 			gd.sel.tw = t->m_tw - 3;
 
-			if(m_mipmap && context->TEX1.MXL > 0 && context->TEX1.MMIN >= 2 && context->TEX1.MMIN <= 5 && m_vt.m_lod.y > 0)
+			if(mipmap)
 			{
 				// TEX1.MMIN
 				// 000 p
@@ -1156,7 +1204,7 @@ bool GSRendererSW::GetScanlineGlobalData(SharedData* data)
 					gd.k = GSVector4((float)k);
 				}
 
-				GIFRegTEX0 MIP_TEX0 = context->TEX0;
+				GIFRegTEX0 MIP_TEX0 = TEX0;
 				GIFRegCLAMP MIP_CLAMP = context->CLAMP;
 
 				GSVector4 tmin = m_vt.m_min.t;
@@ -1285,8 +1333,8 @@ bool GSRendererSW::GetScanlineGlobalData(SharedData* data)
 				}
 			}
 
-			uint16 tw = 1u << context->TEX0.TW;
-			uint16 th = 1u << context->TEX0.TH;
+			uint16 tw = 1u << TEX0.TW;
+			uint16 th = 1u << TEX0.TH;
 
 			switch(context->CLAMP.WMS)
 			{
@@ -1619,7 +1667,7 @@ void GSRendererSW::SharedData::UpdateSource()
 
 		string s;
 
-		if(m_parent->s_save && m_parent->s_n >= m_parent->s_saven)
+		if(m_parent->s_savet && m_parent->s_n >= m_parent->s_saven)
 		{
 			for(size_t i = 0; m_tex[i].t != NULL; i++)
 			{

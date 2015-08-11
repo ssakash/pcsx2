@@ -25,6 +25,7 @@
 #include "GSTextureCache.h"
 #include "GSCrc.h"
 #include "GSFunctionMap.h"
+#include "GSState.h"
 
 class GSRendererHW : public GSRenderer
 {
@@ -34,8 +35,8 @@ private:
 	int m_skip;
 	bool m_reset;
 	int m_upscale_multiplier;
+	int m_buffer_size;
 	int m_userhacks_skipdraw;
-	int m_sub_texel_offset;
 
 	bool m_userhacks_align_sprite_X;
 
@@ -45,6 +46,7 @@ private:
 	typedef void (GSRendererHW::*OO_Ptr)();
 	typedef bool (GSRendererHW::*CU_Ptr)();
 
+	bool OI_DoubleHalfClear(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	bool OI_FFXII(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	bool OI_FFX(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	bool OI_MetalSlug6(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
@@ -63,6 +65,7 @@ private:
 	bool OI_TalesOfLegendia(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	bool OI_SMTNocturne(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	bool OI_PointListPalette(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
+	bool OI_SuperManReturns(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	void OO_DBZBT2();
 	void OO_MajokkoALaMode2();
 
@@ -152,6 +155,7 @@ public:
 	void SetGameCRC(uint32 crc, int options);
 	bool CanUpscale();
 	int GetUpscaleMultiplier();
+	void SetScaling();
 
 	void Reset();
 	void VSync(int field);

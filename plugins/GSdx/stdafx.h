@@ -115,6 +115,17 @@ using namespace std;
 
 #include <memory>
 
+#if _MSC_VER >= 1800 || !defined(_WINDOWS)
+#include <unordered_map>
+#include <unordered_set>
+#define hash_map unordered_map
+#define hash_set unordered_set
+#else
+#include <hash_map>
+#include <hash_set>
+using namespace stdext;
+#endif
+
 #ifdef _WINDOWS
 
 	// Note use GL/glcorearb.h on the future
@@ -122,11 +133,6 @@ using namespace std;
 	#include <GL/glext.h>
 	#include <GL/wglext.h>
 	#include "GLLoader.h"
-
-	#include <hash_map>
-	#include <hash_set>
-
-	using namespace stdext;
 
 	// hashing algoritms at: http://www.cris.com/~Ttwang/tech/inthash.htm
 	// default hash_compare does ldiv and other crazy stuff to reduce speed
@@ -186,23 +192,10 @@ using namespace std;
 
 #else
 
-	#define hash_map map
-	#define hash_set set
-
-	//#include <ext/hash_map>
-	//#include <ext/hash_set>
-
-#ifdef ENABLE_GLES
-	#include <GLES3/gl3.h>
-	#include <GLES3/gl3ext.h>
-#else
 	// Note use GL/glcorearb.h on the future
 	#include <GL/gl.h>
 	#include <GL/glext.h>
-#endif
 	#include "GLLoader.h"
-
-	//using namespace __gnu_cxx;
 
 	#define DIRECTORY_SEPARATOR '/'
 
@@ -364,18 +357,19 @@ struct aligned_free_second {template<class T> void operator()(T& p) {_aligned_fr
 #undef abs
 
 #if !defined(_MSC_VER)
-
 	#if defined(__USE_ISOC11) && !defined(ASAN_WORKAROUND) // not supported yet on gcc 4.9
 
 	#define _aligned_malloc(size, a) aligned_alloc(a, size)
-	static inline void _aligned_free(void* p) { free(p); }
 
-	#elif !defined(HAVE_ALIGNED_MALLOC)
+	#else
 
 	extern void* _aligned_malloc(size_t size, size_t alignment);
-	extern void _aligned_free(void* p);
 
 	#endif
+
+	static inline void _aligned_free(void* p) {
+		free(p);
+	}
 
 	// http://svn.reactos.org/svn/reactos/trunk/reactos/include/crt/mingw32/intrin_x86.h?view=markup
 
@@ -496,6 +490,28 @@ extern void vmfree(void* ptr, size_t size);
 
 	#endif
 
+#endif
+
+#define GL_INSERT(type, code, sev, ...) \
+	do if (gl_DebugMessageInsert) gl_DebugMessageInsert(GL_DEBUG_SOURCE_APPLICATION, type, code, sev, -1, format(__VA_ARGS__).c_str()); while(0);
+
+// Except apple any sane driver support this extension
+#if defined(_DEBUG)
+#define GL_CACHE(...) GL_INSERT(GL_DEBUG_TYPE_OTHER, 0xFEAD, GL_DEBUG_SEVERITY_NOTIFICATION, __VA_ARGS__)
+#else
+#define GL_CACHE(...) (0);
+#endif
+
+#if defined(ENABLE_OGL_DEBUG)
+#define GL_PUSH(...)	do if (gl_PushDebugGroup) gl_PushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0xBAD, -1, format(__VA_ARGS__).c_str()); while(0);
+#define GL_POP()        do if (gl_PopDebugGroup) gl_PopDebugGroup(); while(0);
+#define GL_INS(...)		GL_INSERT(GL_DEBUG_TYPE_ERROR, 0xDEAD, GL_DEBUG_SEVERITY_MEDIUM, __VA_ARGS__)
+#define GL_PERF(...)	GL_INSERT(GL_DEBUG_TYPE_PERFORMANCE, 0xFEE1, GL_DEBUG_SEVERITY_NOTIFICATION, __VA_ARGS__)
+#else
+#define GL_PUSH(...) (0);
+#define GL_POP()     (0);
+#define GL_INS(...)  (0);
+#define GL_PERF(...) (0);
 #endif
 
 // Helper path to dump texture

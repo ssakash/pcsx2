@@ -40,7 +40,6 @@ GSRenderer::GSRenderer()
 	m_filter = theApp.GetConfig("filter", 1);
 	m_vsync = !!theApp.GetConfig("vsync", 0);
 	m_aa1 = !!theApp.GetConfig("aa1", 0);
-	m_mipmap = !!theApp.GetConfig("mipmap", 1);
 	m_fxaa = !!theApp.GetConfig("fxaa", 0);
 	m_shaderfx = !!theApp.GetConfig("shaderfx", 0);
 	m_shadeboost = !!theApp.GetConfig("ShadeBoost", 0);
@@ -115,6 +114,8 @@ bool GSRenderer::Merge(int field)
 	{
 		return false;
 	}
+
+	GL_PUSH("Renderer Merge");
 
 	// try to avoid fullscreen blur, could be nice on tv but on a monitor it's like double vision, hurts my eyes (persona 4, guitar hero)
 	//
@@ -219,19 +220,19 @@ bool GSRenderer::Merge(int field)
 
 		src[i] = GSVector4(r) * scale / GSVector4(tex[i]->GetSize()).xyxy();
 
-		GSVector2 o(0, 0);
+		GSVector2 off(0, 0);
 
 		if(dr[i].top - baseline >= 4) // 2?
 		{
-			o.y = tex[i]->GetScale().y * (dr[i].top - baseline);
+			off.y = tex[i]->GetScale().y * (dr[i].top - baseline);
 
 			if(m_regs->SMODE2.INT && m_regs->SMODE2.FFMD)
 			{
-				o.y /= 2;
+				off.y /= 2;
 			}
 		}
 
-		dst[i] = GSVector4(o).xyxy() + scale * GSVector4(r.rsize());
+		dst[i] = GSVector4(off).xyxy() + scale * GSVector4(r.rsize());
 
 		fs.x = max(fs.x, (int)(dst[i].z + 0.5f));
 		fs.y = max(fs.y, (int)(dst[i].w + 0.5f));
@@ -291,6 +292,8 @@ bool GSRenderer::Merge(int field)
 			m_dev->FXAA();
 		}
 	}
+
+	GL_POP();
 
 	return true;
 }

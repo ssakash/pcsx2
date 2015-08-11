@@ -29,13 +29,15 @@ class GSWndWGL : public GSWndGL
 	HDC		 m_NativeDisplay;
 	HGLRC	 m_context;
 
-	//PFNGLXSWAPINTERVALMESAPROC m_swapinterval;
+	PFNWGLSWAPINTERVALEXTPROC m_swapinterval;
 
 	bool CreateContext(int major, int minor);
 	void CheckContext();
 
 	void CloseWGLDisplay();
 	bool OpenWGLDisplay();
+
+	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 public:
 	GSWndWGL();

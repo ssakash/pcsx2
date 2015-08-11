@@ -27,25 +27,40 @@
 #include "GSTextureCacheOGL.h"
 #include "GSVertexHW.h"
 
-// FIXME does it need a GSVertexHWOGL ??? Data order can be easily programmed on opengl (the only potential
-// issue is the unsupported praga push/pop
-// Note it impact GSVertexTrace.cpp => void GSVertexTrace::Update(const GSVertexHWOGL* v, int count, GS_PRIM_CLASS primclass)
 class GSRendererOGL : public GSRendererHW
-//class GSRendererOGL : public GSRendererHW<GSVertexHWOGL>
 {
+	enum PRIM_OVERLAP {
+		PRIM_OVERLAP_UNKNOW,
+		PRIM_OVERLAP_YES,
+		PRIM_OVERLAP_NO
+	};
+
+	enum ACC_BLEND {
+		ACC_BLEND_NONE = 0,
+		ACC_BLEND_FREE = 1,
+		ACC_BLEND_SPRITE = 2,
+		ACC_BLEND_CCLIP_DALPHA = 3,
+		ACC_BLEND_FULL = 4,
+		ACC_BLEND_ULTRA = 5
+	};
+
 	private:
 		GSVector2 m_pixelcenter;
-		bool m_fba;
-		bool UserHacks_AlphaHack;
-		bool UserHacks_AlphaStencil;
-		bool UserHacks_DateGL4;
-		int  UserHacks_Unscale_sprite;
+		bool m_accurate_date;
+		int m_sw_blending;
+
 		unsigned int UserHacks_TCOffset;
 		float UserHacks_TCO_x, UserHacks_TCO_y;
+
+		PRIM_OVERLAP m_prim_overlap;
+
+		GSVector4i ComputeBoundingBox(const GSVector2& rtscale, const GSVector2i& rtsize);
 
 	protected:
 		void EmulateGS();
 		void SetupIA();
+		bool EmulateTextureShuffleAndFbmask(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL::OMColorMaskSelector& om_csel, GSDeviceOGL::PSConstantBuffer& ps_cb);
+		bool EmulateBlending(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL::PSConstantBuffer& ps_cb, bool DATE_GL42);
 
 	public:
 		GSRendererOGL();
@@ -53,9 +68,9 @@ class GSRendererOGL : public GSRendererHW
 
 		bool CreateDevice(GSDevice* dev);
 
-		void UpdateFBA(GSTexture* rt);
-
 		void DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* tex);
 
-		bool PrimitiveOverlap();
+		PRIM_OVERLAP PrimitiveOverlap();
+
+		void SendDraw(bool require_barrier);
 };

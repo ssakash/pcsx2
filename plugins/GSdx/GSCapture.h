@@ -25,6 +25,7 @@
 #ifndef _CX11_
 #include "GSThread.h"
 #endif
+#include "GSPng.h"
 
 #ifdef _WINDOWS
 #include "GSCaptureDlg.h"
@@ -33,17 +34,24 @@
 class GSCapture
 {
 #ifdef _CX11_
-	std::mutex m_lock;
+	std::recursive_mutex m_lock;
 #else
 	GSCritSec m_lock;
 #endif
 	bool m_capturing;
 	GSVector2i m_size;
+	uint64 m_frame;
+	std::string m_out_dir;
+	int m_threads;
 
 	#ifdef _WINDOWS
 
 	CComPtr<IGraphBuilder> m_graph;
 	CComPtr<IBaseFilter> m_src;
+
+	#elif __linux__
+
+	vector<GSPng::Worker*> m_workers;
 
 	#endif
 

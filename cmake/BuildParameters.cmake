@@ -21,20 +21,27 @@
 # Misc option
 #-------------------------------------------------------------------------------
 option(DISABLE_SVU "Disable superVU (don't use it)")
+option(DISABLE_BUILD_DATE "Disable including the binary compile date")
+
+if(DISABLE_BUILD_DATE OR openSUSE)
+    message(STATUS "Disabling the inclusion of the binary compile date.")
+    add_definitions(-DDISABLE_BUILD_DATE)
+endif()
 
 #-------------------------------------------------------------------------------
 # Graphical option
 #-------------------------------------------------------------------------------
-option(GLSL_API "Replace zzogl CG backend by GLSL (experimental option)")
-option(EGL_API "Use EGL on zzogl (experimental/developer option)")
-option(GLES_API "Use GLES on GSdx (experimental/developer option)")
-option(REBUILD_SHADER "Rebuild glsl/cg shader (developer option)")
+option(GLSL_API "Replace ZZogl CG backend by GLSL (experimental option)")
+option(EGL_API "Use EGL on ZZogl/GSdx (experimental/developer option)")
+option(REBUILD_SHADER "Rebuild GLSL/CG shader (developer option)")
 option(BUILD_REPLAY_LOADERS "Build GS replayer to ease testing (developer option)")
 
 #-------------------------------------------------------------------------------
 # Path and lib option
 #-------------------------------------------------------------------------------
 option(PACKAGE_MODE "Use this option to ease packaging of PCSX2 (developer/distribution option)")
+option(DISABLE_CHEATS_ZIP "Disable including the cheats_ws.zip file")
+option(DISABLE_PCSX2_WRAPPER "Disable including the PCSX2-linux.sh file")
 option(XDG_STD "Use XDG standard path instead of the standard PCSX2 path")
 option(EXTRA_PLUGINS "Build various 'extra' plugins")
 option(SDL2_API "Use SDL2 on spu2x and onepad (experimental/wxWidget mustn't be built with SDL1.2 support")
@@ -43,11 +50,11 @@ option(GTK3_API "Use GTK3 api (experimental/wxWidget must be built with GTK3 sup
 
 if(PACKAGE_MODE)
     if(NOT DEFINED PLUGIN_DIR)
-        set(PLUGIN_DIR "${CMAKE_INSTALL_PREFIX}/lib/games/pcsx2")
+        set(PLUGIN_DIR "${CMAKE_INSTALL_PREFIX}/lib/games/PCSX2")
     endif()
 
     if(NOT DEFINED GAMEINDEX_DIR)
-        set(GAMEINDEX_DIR "${CMAKE_INSTALL_PREFIX}/share/games/pcsx2")
+        set(GAMEINDEX_DIR "${CMAKE_INSTALL_PREFIX}/share/games/PCSX2")
     endif()
 
     if(NOT DEFINED BIN_DIR)
@@ -55,7 +62,7 @@ if(PACKAGE_MODE)
     endif()
 
     if(NOT DEFINED DOC_DIR)
-        set(DOC_DIR "${CMAKE_INSTALL_PREFIX}/share/doc/pcsx2")
+        set(DOC_DIR "${CMAKE_INSTALL_PREFIX}/share/doc/PCSX2")
     endif()
 
     # Compile all source codes with those defines
@@ -117,14 +124,17 @@ if(${PCSX2_TARGET_ARCHITECTURES} MATCHES "i386")
     #     - Only plugins. No package will link to them.
     set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 
-    if (DISABLE_ADVANCE_SIMD)
-        set(ARCH_FLAG "-msse -msse2 -march=i686")
-    else()
-        # AVX requires some fix of the ABI (mangling) (default 2)
-        # Note: V6 requires GCC 4.7
-        #set(ARCH_FLAG "-march=native -fabi-version=6")
-        set(ARCH_FLAG "-march=native")
+    if(NOT DEFINED ARCH_FLAG)
+        if (DISABLE_ADVANCE_SIMD)
+            set(ARCH_FLAG "-msse -msse2 -march=i686")
+        else()
+            # AVX requires some fix of the ABI (mangling) (default 2)
+            # Note: V6 requires GCC 4.7
+            #set(ARCH_FLAG "-march=native -fabi-version=6")
+            set(ARCH_FLAG "-march=native")
+        endif()
     endif()
+
     add_definitions(-D_ARCH_32=1 -D_M_X86=1 -D_M_X86_32=1)
     set(_ARCH_32 1)
     set(_M_X86 1)
@@ -136,11 +146,13 @@ elseif(${PCSX2_TARGET_ARCHITECTURES} MATCHES "x86_64")
     # SuperVU will not be ported
     set(DISABLE_SVU TRUE)
 
-    if (DISABLE_ADVANCE_SIMD)
-        set(ARCH_FLAG "-msse -msse2")
-    else()
-        #set(ARCH_FLAG "-march=native -fabi-version=6")
-        set(ARCH_FLAG "-march=native")
+    if(NOT DEFINED ARCH_FLAG)
+        if (DISABLE_ADVANCE_SIMD)
+            set(ARCH_FLAG "-msse -msse2")
+        else()
+            #set(ARCH_FLAG "-march=native -fabi-version=6")
+            set(ARCH_FLAG "-march=native")
+        endif()
     endif()
     add_definitions(-D_ARCH_64=1 -D_M_X86=1 -D_M_X86_64=1)
     set(_ARCH_64 1)
@@ -219,7 +231,7 @@ endif()
 #-------------------------------------------------------------------------------
 # Set some default compiler flags
 #-------------------------------------------------------------------------------
-set(COMMON_FLAG "-pipe -std=c++0x -fvisibility=hidden -pthread")
+set(COMMON_FLAG "-pipe -std=c++11 -fvisibility=hidden -pthread -fno-builtin-strcmp -fno-builtin-memcmp")
 if (DISABLE_SVU)
     set(COMMON_FLAG "${COMMON_FLAG} -DDISABLE_SVU")
 endif()
@@ -237,18 +249,21 @@ if (USE_CLANG)
     # -Wno-deprecated-register: glib issue...
     set(DEFAULT_WARNINGS "${DEFAULT_WARNINGS}  -Wno-deprecated-register")
     set(COMMON_FLAG "${COMMON_FLAG} -no-integrated-as")
+    set(DBG "-g")
+else()
+    set(DBG "-ggdb")
 endif()
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-    set(DEBUG_FLAG "-g")
+    set(DEBUG_FLAG "${DBG}")
 elseif(CMAKE_BUILD_TYPE MATCHES "Devel")
-    set(DEBUG_FLAG "-g -DNDEBUG")
+    set(DEBUG_FLAG "${DBG} -DNDEBUG")
 elseif(CMAKE_BUILD_TYPE MATCHES "Release")
     set(DEBUG_FLAG "-DNDEBUG")
 endif()
 
 if (USE_ASAN)
-    set(ASAN_FLAG "-fsanitize=address -fno-omit-frame-pointer -g -DASAN_WORKAROUND")
+    set(ASAN_FLAG "-fsanitize=address -fno-omit-frame-pointer ${DBG} -DASAN_WORKAROUND")
     if(${PCSX2_TARGET_ARCHITECTURES} MATCHES "i386")
         set(ASAN_FLAG "${ASAN_FLAG} -mpreferred-stack-boundary=4 -mincoming-stack-boundary=2")
     endif()
@@ -256,8 +271,16 @@ else()
     set(ASAN_FLAG "")
 endif()
 
+if(NOT DEFINED OPTIMIZATION_FLAG)
+    if (CMAKE_BUILD_TYPE STREQUAL Debug)
+        set(OPTIMIZATION_FLAG -O0)
+    else()
+        set(OPTIMIZATION_FLAG -O2)
+    endif()
+endif()
+
 # Note: -DGTK_DISABLE_DEPRECATED can be used to test a build without gtk deprecated feature. It could be useful to port to a newer API
-set(DEFAULT_GCC_FLAG "${ARCH_FLAG} ${COMMON_FLAG} ${DEFAULT_WARNINGS} ${AGGRESSIVE_WARNING} ${HARDENING_FLAG} ${DEBUG_FLAG} ${ASAN_FLAG}")
+set(DEFAULT_GCC_FLAG "${ARCH_FLAG} ${COMMON_FLAG} ${DEFAULT_WARNINGS} ${AGGRESSIVE_WARNING} ${HARDENING_FLAG} ${DEBUG_FLAG} ${ASAN_FLAG} ${OPTIMIZATION_FLAG}")
 # c++ only flags
 set(DEFAULT_CPP_FLAG "${DEFAULT_GCC_FLAG} -Wno-invalid-offsetof")
 

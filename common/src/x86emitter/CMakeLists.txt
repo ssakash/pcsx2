@@ -6,54 +6,11 @@ if(NOT TOP_CMAKE_WAS_SOURCED)
 endif(NOT TOP_CMAKE_WAS_SOURCED)
 
 
-# library name
 set(Output x86emitter)
 
-# set common flags
 set(CommonFlags 
 	-fno-strict-aliasing
     )
-
-# set optimization flags
-set(OptimizationFlags
-	-falign-functions
-	-falign-jumps
-	-falign-labels
-	-falign-loops
-	-fcaller-saves
-	-fcprop-registers
-	-fcrossjumping
-	-fcse-follow-jumps
-	-fcse-skip-blocks
-	-fdefer-pop
-	-fdelete-null-pointer-checks
-	-fgcse
-	-fgcse-lm
-	-fif-conversion
-	-fif-conversion2
-	-fmerge-constants
-	-foptimize-sibling-calls
-	-fpeephole2
-	-fregmove
-	-freorder-blocks
-	-freorder-functions 
-	-frerun-cse-after-loop
-	-fsched-interblock
-	-fsched-spec
-	-fstrict-overflow
-	-fthread-jumps
-	-ftree-ccp
-	-ftree-ch
-	-ftree-copyrename
-	-ftree-dce
-	-ftree-dominator-opts
-	-ftree-fre
-	-ftree-lrs
-	-ftree-pre
-	-ftree-sra
-	-ftree-ter
-	-ftree-vrp
-	-funit-at-a-time)
 
 #Clang doesn't support a few common flags that GCC does.
 if(NOT USE_CLANG)
@@ -77,7 +34,7 @@ if(CMAKE_BUILD_TYPE STREQUAL Devel)
 	# add defines
 	set(x86emitterFinalFlags
 		${x86emitterFinalFlags}
-		${CommonFlags} ${OptimizationFlags} -DPCSX2_DEVBUILD
+		${CommonFlags} -DPCSX2_DEVBUILD
 	)
 endif(CMAKE_BUILD_TYPE STREQUAL Devel)
 
@@ -87,7 +44,7 @@ if(CMAKE_BUILD_TYPE STREQUAL Release)
 	# add defines
 	set(x86emitterFinalFlags
 		${x86emitterFinalFlags}
-		${CommonFlags} ${OptimizationFlags}
+		${CommonFlags}
 	)
 endif(CMAKE_BUILD_TYPE STREQUAL Release)
 

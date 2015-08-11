@@ -53,12 +53,12 @@ class GSBufferOGL {
 		, m_count(0)
 		, m_limit(0)
 		, m_target(target)
-		, m_buffer_storage((theApp.GetConfig("ogl_vertex_storage", 0) == 1) && GLLoader::found_GL_ARB_buffer_storage)
+		, m_buffer_storage(GLLoader::found_GL_ARB_buffer_storage)
 	{
 		gl_GenBuffers(1, &m_buffer_name);
 		// Opengl works best with 1-4MB buffer.
 		// Warning m_limit is the number of object (not the size in Bytes)
-		m_limit = 2 * 2 * 1024 * 1024 / m_stride;
+		m_limit = 8 * 1024 * 1024 / m_stride;
 
 		if (m_buffer_storage) {
 			for (size_t i = 0; i < 5; i++) {
@@ -67,7 +67,6 @@ class GSBufferOGL {
 
 			// TODO: if we do manually the synchronization, I'm not sure size is important. It worths to investigate it.
 			// => bigger buffer => less sync
-#ifndef ENABLE_GLES
 			bind();
 			// coherency will be done by flushing
 			const GLbitfield common_flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT;
@@ -80,7 +79,6 @@ class GSBufferOGL {
 				fprintf(stderr, "Failed to map buffer\n");
 				throw GSDXError();
 			}
-#endif
 		} else {
 			m_buffer_ptr = NULL;
 		}
@@ -91,6 +89,7 @@ class GSBufferOGL {
 			for (size_t i = 0; i < 5; i++) {
 				gl_DeleteSync(m_fence[i]);
 			}
+			// Don't know if we must do it
 			bind();
 			gl_UnmapBuffer(m_target);
 		}
@@ -134,97 +133,75 @@ class GSBufferOGL {
 
 	void map_upload(const void* src)
 	{
-		void* dst;
+		ASSERT(m_count < m_limit);
 
 		size_t offset = m_start*m_stride;
 		size_t length = m_count*m_stride;
-		//fprintf(stderr, "Upload from %x offset %x bytes (%x)\n", offset, length, m_target);
 
-		// Get the pointer of the buffer
-		{
-			// It would need some protection of the data. For the moment finger cross!
-			if (m_count > m_limit) {
-				fprintf(stderr, "Buffer (%x) too small! Please report it upstream\n", m_target);
-				ASSERT(0);
-			} else if (m_count > (m_limit - m_start) ) {
-				size_t current_chunk = offset >> 20;
+		if (m_count > (m_limit - m_start) ) {
+			size_t current_chunk = offset >> 21;
 #ifdef ENABLE_OGL_DEBUG_FENCE
-				fprintf(stderr, "%x: Wrap buffer\n", m_target);
-				fprintf(stderr, "%x: Insert a fence in chunk %d\n", m_target, current_chunk);
+			fprintf(stderr, "%x: Wrap buffer\n", m_target);
+			fprintf(stderr, "%x: Insert a fence in chunk %d\n", m_target, current_chunk);
 #endif
-				ASSERT(current_chunk > 0 && current_chunk < 5);
-				if (m_fence[current_chunk] == 0) {
-					m_fence[current_chunk] = gl_FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-				}
-
-				// Wrap at startup
-				m_start = 0;
-				offset = 0;
-
-				// Only check first chunk
-				if (m_fence[0]) {
-#ifdef ENABLE_OGL_DEBUG_FENCE
-					GLenum status = gl_ClientWaitSync(m_fence[0], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
-					if (status != GL_ALREADY_SIGNALED) {
-						fprintf(stderr, "%x: Sync Sync! Buffer too small\n", m_target);
-					}
-#else
-					gl_ClientWaitSync(m_fence[0], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
-#endif
-					gl_DeleteSync(m_fence[0]);
-					m_fence[0] = 0;
-				}
-
+			ASSERT(current_chunk > 0 && current_chunk < 5);
+			if (m_fence[current_chunk] == 0) {
+				m_fence[current_chunk] = gl_FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 			}
 
-			// Protect buffer with fences
-			size_t current_chunk = offset >> 20;
-			size_t next_chunk = (offset + length) >> 20;
-			for (size_t c = current_chunk + 1; c <= next_chunk; c++) {
-#ifdef ENABLE_OGL_DEBUG_FENCE
-				fprintf(stderr, "%x: Insert a fence in chunk %d\n", m_target, c-1);
-#endif
-				ASSERT(c > 0 && c < 5);
-				m_fence[c-1] = gl_FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-				if (m_fence[c]) {
-#ifdef ENABLE_OGL_DEBUG_FENCE
-					GLenum status = gl_ClientWaitSync(m_fence[c], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
-#else
-					gl_ClientWaitSync(m_fence[c], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
-#endif
-					gl_DeleteSync(m_fence[c]);
-					m_fence[c] = 0;
+			// Wrap at startup
+			m_start = 0;
+			offset = 0;
 
+			// Only check first chunk
+			if (m_fence[0]) {
 #ifdef ENABLE_OGL_DEBUG_FENCE
-					if (status != GL_ALREADY_SIGNALED) {
-						fprintf(stderr, "%x: Sync Sync! Buffer too small\n", m_target);
-					}
-#endif
+				GLenum status = gl_ClientWaitSync(m_fence[0], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+				if (status != GL_ALREADY_SIGNALED) {
+					fprintf(stderr, "%x: Sync Sync! Buffer too small\n", m_target);
 				}
+#else
+				gl_ClientWaitSync(m_fence[0], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+#endif
+				gl_DeleteSync(m_fence[0]);
+				m_fence[0] = 0;
 			}
-
-			dst = m_buffer_ptr + offset;
 		}
+
+		// Protect buffer with fences
+		size_t current_chunk = offset >> 21;
+		size_t next_chunk = (offset + length) >> 21;
+		for (size_t c = current_chunk + 1; c <= next_chunk; c++) {
+#ifdef ENABLE_OGL_DEBUG_FENCE
+			fprintf(stderr, "%x: Insert a fence in chunk %d\n", m_target, c-1);
+#endif
+			ASSERT(c > 0 && c < 5);
+			m_fence[c-1] = gl_FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+			if (m_fence[c]) {
+#ifdef ENABLE_OGL_DEBUG_FENCE
+				GLenum status = gl_ClientWaitSync(m_fence[c], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+#else
+				gl_ClientWaitSync(m_fence[c], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+#endif
+				gl_DeleteSync(m_fence[c]);
+				m_fence[c] = 0;
+
+#ifdef ENABLE_OGL_DEBUG_FENCE
+				if (status != GL_ALREADY_SIGNALED) {
+					fprintf(stderr, "%x: Sync Sync! Buffer too small\n", m_target);
+				}
+#endif
+			}
+		}
+
+		void* dst = m_buffer_ptr + offset;
 
 		memcpy(dst, src, length);
 		gl_FlushMappedBufferRange(m_target, offset, length);
 	}
 
-#ifdef ENABLE_GLES
-	void upload(const void* src, uint32 count, uint32 basevertex = 0)
-#else
 	void upload(const void* src, uint32 count)
-#endif
 	{
-#ifdef ENABLE_GLES
-		// Emulate gl_DrawElementsBaseVertex... Maybe GLES 4 you know!
-		if (basevertex) {
-			uint32* data = (uint32*) src;
-			for (uint32 i = 0; i < count; i++) {
-				data[i] += basevertex;
-			}
-		}
-#endif
 #ifdef ENABLE_OGL_DEBUG_MEM_BW
 		g_vertex_upload_byte += count*m_stride;
 #endif
@@ -249,30 +226,23 @@ class GSBufferOGL {
 		glDrawArrays(mode, m_start, m_count);
 	}
 
+	void Draw(GLenum mode, int offset, int count)
+	{
+		glDrawArrays(mode, m_start + offset, count);
+	}
+
+
 	void Draw(GLenum mode, GLint basevertex)
 	{
-#ifdef ENABLE_GLES
-		glDrawElements(mode, m_count, GL_UNSIGNED_INT, (void*)(m_start * m_stride));
-#else
 		gl_DrawElementsBaseVertex(mode, m_count, GL_UNSIGNED_INT, (void*)(m_start * m_stride), basevertex);
-#endif
 	}
 
 	void Draw(GLenum mode, GLint basevertex, int offset, int count)
 	{
-#ifdef ENABLE_GLES
-		glDrawElements(mode, count, GL_UNSIGNED_INT, (void*)((m_start + offset) * m_stride));
-#else
 		gl_DrawElementsBaseVertex(mode, count, GL_UNSIGNED_INT, (void*)((m_start + offset) * m_stride), basevertex);
-#endif
 	}
 
 	size_t GetStart() { return m_start; }
-
-	void debug()
-	{
-		fprintf(stderr, "data buffer: start %d, count %d\n", m_start, m_count);
-	}
 
 };
 
@@ -338,6 +308,8 @@ public:
 
 	void DrawPrimitive() { m_vb->Draw(m_topology); }
 
+	void DrawPrimitive(int offset, int count) { m_vb->Draw(m_topology, offset, count); }
+
 	void DrawIndexedPrimitive() { m_ib->Draw(m_topology, m_vb->GetStart() ); }
 
 	void DrawIndexedPrimitive(int offset, int count) { m_ib->Draw(m_topology, m_vb->GetStart(), offset, count ); }
@@ -347,11 +319,7 @@ public:
 	void UploadVB(const void* vertices, size_t count) { m_vb->upload(vertices, count); }
 
 	void UploadIB(const void* index, size_t count) {
-#ifdef ENABLE_GLES
-		m_ib->upload(index, count, m_vb->GetStart());
-#else
 		m_ib->upload(index, count);
-#endif
 	}
 
 	~GSVertexBufferStateOGL()
@@ -361,26 +329,4 @@ public:
 		delete m_ib;
 	}
 
-	void debug()
-	{
-		string topo;
-		switch (m_topology) {
-			case GL_POINTS:
-				topo = "point";
-				break;
-			case GL_LINES:
-				topo = "line";
-				break;
-			case GL_TRIANGLES:
-				topo = "triangle";
-				break;
-			case GL_TRIANGLE_STRIP:
-				topo = "triangle strip";
-				break;
-		}
-		m_vb->debug();
-		m_ib->debug();
-		fprintf(stderr, "primitives of %s\n", topo.c_str());
-
-	}
 };

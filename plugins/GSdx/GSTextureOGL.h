@@ -23,18 +23,14 @@
 
 #include "GSTexture.h"
 
-// FIXME find the optimal number of PBO
-#define PBO_POOL_SIZE 8
-
 namespace PboPool {
 	void BindPbo();
 	void UnbindPbo();
 	void NextPbo();
+	void NextPboWithSync();
 
 	char* Map(uint32 size);
-	void MapAll();
 	void Unmap();
-	void UnmapAll();
 	uint32 Offset();
 	void EndTransfer();
 
@@ -46,9 +42,12 @@ class GSTextureOGL : public GSTexture
 {
 	private:
 		GLuint m_texture_id;	 // the texture id
-		uint32 m_pbo_id;
 		int m_pbo_size;
 		GLuint m_fbo_read;
+		bool m_dirty;
+		bool m_clean;
+
+		uint8* m_local_buffer;
 
 		// internal opengl format/type/alignment
 		GLenum m_int_format;
@@ -56,22 +55,24 @@ class GSTextureOGL : public GSTexture
 		uint32 m_int_alignment;
 		uint32 m_int_shift;
 
-		GLuint64 m_handles[12];
-
 	public:
 		explicit GSTextureOGL(int type, int w, int h, int format, GLuint fbo_read);
 		virtual ~GSTextureOGL();
 
+		void Invalidate();
 		bool Update(const GSVector4i& r, const void* data, int pitch);
 		bool Map(GSMap& m, const GSVector4i* r = NULL);
 		void Unmap();
 		bool Save(const string& fn, bool dds = false);
 		void Save(const string& fn, const void* image, uint32 pitch);
-		void SaveRaw(const string& fn, const void* image, uint32 pitch);
 
 		bool IsBackbuffer() { return (m_type == GSTexture::Backbuffer); }
 		bool IsDss() { return (m_type == GSTexture::DepthStencil); }
 
-		GLuint GetID() { return m_texture_id; }
-		GLuint64 GetHandle(GLuint sampler_id);
+		uint32 GetID() { return m_texture_id; }
+		bool HasBeenCleaned() { return m_clean; }
+		void WasAttached() { m_clean = false; m_dirty = true; }
+		void WasCleaned() { m_clean = true; }
+
+		uint32 GetMemUsage();
 };

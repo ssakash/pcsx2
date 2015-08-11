@@ -351,6 +351,9 @@
     <ClCompile Include="GSRendererCL.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="GSDrawingContext.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="GLLoader.h">
@@ -752,10 +755,18 @@
     <None Include="res\tfx.cl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="res\logo_ogl.bmp">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GSdx.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\logo-ogl.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>

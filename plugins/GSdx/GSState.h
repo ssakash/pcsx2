@@ -142,10 +142,9 @@ class GSState : public GSAlignedClass<32>
 protected:
 	bool IsBadFrame(int& skip, int UserHacks_SkipDraw);
 
-	int UserHacks_AggressiveCRC;
-	int UserHacks_DisableCrcHacks;
 	int UserHacks_WildHack;
-    bool isPackedUV_HackFlag;
+	bool isPackedUV_HackFlag;
+	int m_crc_hack_level;
 
 	GSVertex m_v;
 	float m_q;
@@ -185,6 +184,7 @@ protected:
 	void GetAlphaMinMax();
 	bool TryAlphaTest(uint32& fm, uint32& zm);
 	bool IsOpaque();
+	bool IsMipMapActive();
 
 public:
 	GIFPath m_path[4];
@@ -197,16 +197,21 @@ public:
 	uint32 m_crc;
 	int m_options;
 	int m_frameskip;
+	bool m_crcinited;
 	bool m_framelimit;
 	CRC::Game m_game;
 	GSDump m_dump;
 	bool m_nativeres;
+	bool m_mipmap;
 
 	int s_n;
 	bool s_dump;
 	bool s_save;
+	bool s_savet;
 	bool s_savez;
+	bool s_savef;
 	int s_saven;
+	int s_savel;
 
 public:
 	GSState();

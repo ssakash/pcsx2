@@ -125,7 +125,7 @@ static void setupPass1(microVU& mVU, int opCase, bool isACC, bool noFlagUpdate) 
 	opCase3 { mVUanalyzeFMAC1(mVU, ((isACC) ? 0 : _Fd_), _Fs_, 0); }
 	opCase4 { mVUanalyzeFMAC1(mVU, ((isACC) ? 0 : _Fd_), _Fs_, 0); }
 
-	if (noFlagUpdate) {
+	if (noFlagUpdate) { //Max/Min Ops
 		sFLAG.doFlag = false;
 	}
 }

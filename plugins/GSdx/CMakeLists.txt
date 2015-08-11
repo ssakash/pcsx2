@@ -7,7 +7,7 @@ endif()
 
 
 # plugin name
-set(Output GSdx-0.1.16)
+set(Output GSdx-1.0.0)
 
 set(CommonFlags
     -fno-operator-names # because Xbyak uses and()/xor()/or()/not() function
@@ -18,19 +18,14 @@ set(CommonFlags
     -Wunused-variable # __dummy variable need to be investigated
     )
 
-set(OptimizationFlags
-    -O2
-    )
-
-
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
     set(GSdxFinalFlags ${GSdxFinalFlags} ${CommonFlags} -D_DEBUG)
 
 elseif(CMAKE_BUILD_TYPE STREQUAL Devel)
-    set(GSdxFinalFlags ${GSdxFinalFlags} ${CommonFlags} ${OptimizationFlags} -D_DEVEL)
+    set(GSdxFinalFlags ${GSdxFinalFlags} ${CommonFlags} -D_DEVEL)
 
 elseif(CMAKE_BUILD_TYPE STREQUAL Release)
-    set(GSdxFinalFlags ${GSdxFinalFlags} ${CommonFlags} ${OptimizationFlags} -W)
+    set(GSdxFinalFlags ${GSdxFinalFlags} ${CommonFlags} -W)
 
 endif()
 
@@ -38,8 +33,16 @@ if(XDG_STD)
     set(GSdxFinalFlags ${GSdxFinalFlags} -DXDG_STD)
 endif()
 
-if(GLES_API AND GLESV2_FOUND)
-    set(GSdxFinalFlags ${GSdxFinalFlags} -DENABLE_GLES)
+if(EGL_API AND EGL_FOUND)
+    set(GSdxFinalFlags ${GSdxFinalFlags} -DEGL_SUPPORTED)
+endif()
+
+if(LIBLZMA_FOUND)
+	set(GSdxFinalFlags ${GSdxFinalFlags} -DLZMA_SUPPORTED)
+endif()
+
+if(PNGPP_FOUND)
+    set(GSdxFinalFlags ${GSdxFinalFlags} -DPNGPP_SUPPORTED)
 endif()
 
 #Clang doesn't support a few common flags that GCC does.
@@ -74,6 +77,7 @@ set(GSdxSources
     GSDeviceSW.cpp
     GSDeviceNull.cpp
     GSDirtyRect.cpp
+    GSDrawingContext.cpp
     GSDrawScanline.cpp
     GSDrawScanlineCodeGenerator.cpp
     GSDrawScanlineCodeGenerator.x86.avx.cpp
@@ -85,7 +89,9 @@ set(GSdxSources
     GSFunctionMap.cpp
     GSLinuxDialog.cpp
     GSLocalMemory.cpp
+	GSLzma.cpp
     GSPerfMon.cpp
+    GSPng.cpp
     GSRasterizer.cpp
     GSRenderer.cpp
     GSRendererCL.cpp
@@ -199,24 +205,24 @@ set(GSdxFinalLibs
     ${X11_LIBRARIES}
 )
 
-if(GLES_API AND GLESV2_FOUND)
-    set(GSdxFinalLibs
-        ${GSdxFinalLibs}
-        ${GLESV2_LIBRARIES}
-    )
-else()
-    set(GSdxFinalLibs
-        ${GSdxFinalLibs}
-        ${OPENGL_LIBRARIES}
-    )
-endif()
-
-set(GSdxFinalLibs
-    ${GSdxFinalLibs}
-    ${EGL_LIBRARIES}
+set(GSdxFinalLibs ${GSdxFinalLibs}
+    ${OPENGL_LIBRARIES}
     ${GTK2_LIBRARIES}
     ${LIBC_LIBRARIES}
+    ${PNG_LIBRARY}
 )
+
+if(EGL_API AND EGL_FOUND)
+    set(GSdxFinalLibs ${GSdxFinalLibs}
+        ${EGL_LIBRARIES}
+        )
+endif()
+
+if(LIBLZMA_FOUND)
+    set(GSdxFinalLibs ${GSdxFinalLibs}
+		${LIBLZMA_LIBRARIES}
+		)
+endif()
 
 # Generate Glsl header file. Protect with REBUILD_SHADER to avoid build-dependency on PERL
 if (REBUILD_SHADER)

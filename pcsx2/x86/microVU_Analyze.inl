@@ -288,24 +288,36 @@ __fi void mVUanalyzeR2(mV, int Ft, bool canBeNOP) {
 //------------------------------------------------------------------
 __ri void flagSet(mV, bool setMacFlag) {
 	int curPC = iPC;
+	bool calcOPS = false;
+		
+	//Check which ops need to do the flag settings, also check for runs of ops as they can do multiple calculations to get the sticky status flags (VP2)
 	for (int i = mVUcount, j = 0; i > 0; i--, j++) {
 		j += mVUstall;
-		incPC2(-2);
-		if (sFLAG.doFlag && (j >= 3)) { 
-			if (setMacFlag) { mFLAG.doFlag = 1; }
+		incPC(-2);
+		if (sFLAG.doFlag && (j >= 3)) {
+			//Calculation only ops write to VF00
+			if (calcOPS == true && (mVUup.VF_write.reg != 0))
+				break;
+
+			if (setMacFlag) { mFLAG.doFlag = 1; break; }
 			else { sFLAG.doNonSticky = 1; }
-			break; 
+			calcOPS = true;
+		}
+		else {
+			if (calcOPS == true)
+				break;
 		}
 	}
 	iPC = curPC;
+	setCode();
 }
 
 __ri void mVUanalyzeSflag(mV, int It) {
-	mVUlow.readFlags = 1;
+	mVUlow.readFlags = true;
 	analyzeVIreg2(mVU, It, mVUlow.VI_write, 1);
 	if (!It) { mVUlow.isNOP = 1; }
 	else {
-		mVUsFlagHack = 0; // Don't Optimize Out Status Flags for this block
+		//mVUsFlagHack = 0; // Don't Optimize Out Status Flags for this block
 		mVUinfo.swapOps = 1;
 		flagSet(mVU, 0);
 		if (mVUcount < 4) {
@@ -317,7 +329,7 @@ __ri void mVUanalyzeSflag(mV, int It) {
 
 __ri void mVUanalyzeFSSET(mV) {
 	mVUlow.isFSSET = 1;
-	mVUlow.readFlags = 1;
+	mVUlow.readFlags = true;
 }
 
 //------------------------------------------------------------------
@@ -325,7 +337,7 @@ __ri void mVUanalyzeFSSET(mV) {
 //------------------------------------------------------------------
 
 __ri void mVUanalyzeMflag(mV, int Is, int It) {
-	mVUlow.readFlags = 1;
+	mVUlow.readFlags = true;
 	analyzeVIreg1(mVU, Is, mVUlow.VI_read[0]);
 	analyzeVIreg2(mVU, It, mVUlow.VI_write, 1);
 	if (!It) { mVUlow.isNOP = 1; }
@@ -345,7 +357,7 @@ __ri void mVUanalyzeMflag(mV, int Is, int It) {
 
 __fi void mVUanalyzeCflag(mV, int It) {
 	mVUinfo.swapOps = 1;
-	mVUlow.readFlags = 1;
+	mVUlow.readFlags = true;
 	if (mVUcount < 4) { 
 		if (!(mVUpBlock->pState.needExactMatch & 4)) // The only time this should happen is on the first program block
 			DevCon.WriteLn(Color_Green, "microVU%d: pState's cFlag Info was expected to be set [%04x]", getIndex, xPC);

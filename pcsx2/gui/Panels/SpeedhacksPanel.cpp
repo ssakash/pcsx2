@@ -106,12 +106,12 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	// Cycle stealing works by 'fast-forwarding' the EE by an arbitrary number of cycles whenever VU1 micro-programs
 	// are run, which works as a rough-guess skipping of what would normally be idle time spent running on the EE.
 
-	wxPanelWithHelpers* eeSliderPanel = new wxPanelWithHelpers( left, wxVERTICAL, _("EE Cyclerate [Not Recommended]") );
+	m_eeSliderPanel = new wxPanelWithHelpers( left, wxVERTICAL, _("EE Cyclerate [Not Recommended]") );
 
-	m_slider_eecycle = new wxSlider( eeSliderPanel, wxID_ANY, 1, 1, 3,
+	m_slider_eecycle = new wxSlider( m_eeSliderPanel, wxID_ANY, 1, 1, 3,
 		wxDefaultPosition, wxDefaultSize, wxHORIZONTAL | wxSL_AUTOTICKS | wxSL_LABELS );
 
-	m_msg_eecycle = new pxStaticHeading( eeSliderPanel );
+	m_msg_eecycle = new pxStaticHeading( m_eeSliderPanel );
 	m_msg_eecycle->SetForegroundColour( wxColour( L"Red" ) );
 	m_msg_eecycle->SetHeight(3);
 
@@ -124,12 +124,12 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	// ------------------------------------------------------------------------
 	// VU Cycle Stealing Hack Section:
 
-	wxPanelWithHelpers* vuSliderPanel = new wxPanelWithHelpers( right, wxVERTICAL, _("VU Cycle Stealing [Not Recommended]") );
+	m_vuSliderPanel = new wxPanelWithHelpers( right, wxVERTICAL, _("VU Cycle Stealing [Not Recommended]") );
 
-	m_slider_vustealer = new wxSlider( vuSliderPanel, wxID_ANY, 0, 0, 3, wxDefaultPosition, wxDefaultSize,
+	m_slider_vustealer = new wxSlider(m_vuSliderPanel, wxID_ANY, 0, 0, 3, wxDefaultPosition, wxDefaultSize,
 		wxHORIZONTAL | wxSL_AUTOTICKS | wxSL_LABELS );
 
-	m_msg_vustealer = new pxStaticHeading( vuSliderPanel );
+	m_msg_vustealer = new pxStaticHeading(m_vuSliderPanel);
 	m_msg_vustealer->SetForegroundColour( wxColour( L"Red" ) );
 	m_msg_vustealer->SetHeight(3);
 
@@ -191,24 +191,24 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 	//DefEnableSizer	+= pxStretchSpacer(1);
 	//DefEnableSizer	+= m_check_Enable		| StdExpand().Align( wxALIGN_RIGHT );
 
-	*eeSliderPanel	+= m_slider_eecycle		| sliderFlags;
-	*eeSliderPanel	+= m_msg_eecycle		| sliderFlags;
+	*m_eeSliderPanel += m_slider_eecycle | sliderFlags;
+	*m_eeSliderPanel += m_msg_eecycle | sliderFlags;
 
-	*vuSliderPanel	+= m_slider_vustealer	| sliderFlags;
-	*vuSliderPanel	+= m_msg_vustealer		| sliderFlags;
+	*m_vuSliderPanel += m_slider_vustealer | sliderFlags;
+	*m_vuSliderPanel += m_msg_vustealer | sliderFlags;
 
-	*vuHacksPanel	+= m_check_vuFlagHack;
-	*vuHacksPanel	+= m_check_vuThread;
+	*vuHacksPanel += m_check_vuFlagHack | StdExpand();
+	*vuHacksPanel += m_check_vuThread | StdExpand();
 	//*vuHacksPanel	+= 57; // Aligns left and right boxes in default language and font size
 
-	*miscHacksPanel	+= m_check_intc;
-	*miscHacksPanel	+= m_check_waitloop;
-	*miscHacksPanel	+= m_check_fastCDVD;
+	*miscHacksPanel	+= m_check_intc | StdExpand();
+	*miscHacksPanel	+= m_check_waitloop | StdExpand();
+	*miscHacksPanel	+= m_check_fastCDVD | StdExpand();
 
-	*left	+= eeSliderPanel	| StdExpand();
+	*left	+= m_eeSliderPanel | StdExpand();
 	*left	+= miscHacksPanel	| StdExpand();
 
-	*right	+= vuSliderPanel	| StdExpand();
+	*right	+= m_vuSliderPanel | StdExpand();
 	*right	+= vuHacksPanel		| StdExpand();
 	*right	+= StdPadding;
 	*right	+= m_button_Defaults| StdButton();
@@ -226,32 +226,37 @@ Panels::SpeedHacksPanel::SpeedHacksPanel( wxWindow* parent )
 
 	// ------------------------------------------------------------------------
 
-	Connect( wxEVT_SCROLL_PAGEUP,	wxScrollEventHandler( SpeedHacksPanel::Slider_Click ) );
-	Connect( wxEVT_SCROLL_PAGEDOWN,	wxScrollEventHandler( SpeedHacksPanel::Slider_Click ) );
-	Connect( wxEVT_SCROLL_LINEUP,	wxScrollEventHandler( SpeedHacksPanel::Slider_Click ) );
-	Connect( wxEVT_SCROLL_LINEDOWN,	wxScrollEventHandler( SpeedHacksPanel::Slider_Click ) );
-	Connect( wxEVT_SCROLL_TOP,		wxScrollEventHandler( SpeedHacksPanel::Slider_Click ) );
-	Connect( wxEVT_SCROLL_BOTTOM,	wxScrollEventHandler( SpeedHacksPanel::Slider_Click ) );
-
 	Connect( m_slider_eecycle->GetId(),		wxEVT_SCROLL_CHANGED, wxScrollEventHandler( SpeedHacksPanel::EECycleRate_Scroll ) );
 	Connect( m_slider_vustealer->GetId(),	wxEVT_SCROLL_CHANGED, wxScrollEventHandler( SpeedHacksPanel::VUCycleRate_Scroll ) );
 	Connect( m_check_Enable->GetId(),		wxEVT_COMMAND_CHECKBOX_CLICKED,	wxCommandEventHandler( SpeedHacksPanel::OnEnable_Toggled ) );
 	Connect( wxID_DEFAULT,					wxEVT_COMMAND_BUTTON_CLICKED,	wxCommandEventHandler( SpeedHacksPanel::Defaults_Click ) );
 }
 
+// Doesn't modify values - only locks(gray out)/unlocks as necessary.
 void Panels::SpeedHacksPanel::EnableStuff( AppConfig* configToUse )
 {
 	if( !configToUse ) configToUse = g_Conf;
-	wxSizerItemList& items( s_table->GetChildren() );
 
-	wxSizerItemList::iterator it	= items.begin();
-	wxSizerItemList::iterator end	= items.end();
+	bool hasPreset = configToUse->EnablePresets;
+	bool hacksEnabled = configToUse->EnableSpeedHacks;
+	bool HacksEnabledAndNoPreset = hacksEnabled && !hasPreset;
 
-	while( it != end )
-	{
-		(*it)->GetWindow()->Enable( m_check_Enable->GetValue());
-		++it;
-	}
+	// Main checkbox and Restore-defaults - locked only if presets are enabled
+	m_check_Enable->Enable(!hasPreset);
+	m_button_Defaults->Enable(!hasPreset);
+
+	// lock/unlock the slider panels rather than the sliders themselves
+	// in order to affect both sliders and texts
+	m_eeSliderPanel->Enable(HacksEnabledAndNoPreset);
+	m_vuSliderPanel->Enable(HacksEnabledAndNoPreset);
+
+	// checkboxes
+	m_check_vuFlagHack->Enable(HacksEnabledAndNoPreset);
+	m_check_intc->Enable(HacksEnabledAndNoPreset);
+	m_check_waitloop->Enable(HacksEnabledAndNoPreset);
+	m_check_fastCDVD->Enable(HacksEnabledAndNoPreset);
+
+	m_check_vuThread->Enable(hacksEnabled); // MTVU is unaffected by presets
 }
 
 void Panels::SpeedHacksPanel::AppStatusEvent_OnSettingsApplied()
@@ -262,26 +267,25 @@ void Panels::SpeedHacksPanel::AppStatusEvent_OnSettingsApplied()
 
 void Panels::SpeedHacksPanel::ApplyConfigToGui( AppConfig& configToApply, int flags )
 {
-	const bool enabled = configToApply.EnableSpeedHacks;
 	Pcsx2Config::SpeedhackOptions& opts=configToApply.EmuOptions.Speedhacks;
 
-	m_check_Enable		->SetValue( !!enabled ).Enable(!configToApply.EnablePresets);
+	// First, set the values of the widgets (checked/unchecked etc).
+	m_check_Enable->SetValue(configToApply.EnableSpeedHacks);
 
 	m_slider_eecycle	->SetValue( opts.EECycleRate + 1 );
 	m_slider_vustealer	->SetValue( opts.VUCycleSteal );
-	m_slider_eecycle->Enable(!configToApply.EnablePresets);
-	m_slider_vustealer->Enable(!configToApply.EnablePresets);
 
 	SetEEcycleSliderMsg();
 	SetVUcycleSliderMsg();
 
-	m_check_vuFlagHack	->SetValue(opts.vuFlagHack).Enable(!configToApply.EnablePresets);
+	m_check_vuFlagHack->SetValue(opts.vuFlagHack);
 	if( !(flags & AppConfig::APPLY_FLAG_FROM_PRESET) )
 		m_check_vuThread	->SetValue(opts.vuThread);
-	m_check_intc		->SetValue(opts.IntcStat).Enable(!configToApply.EnablePresets);
-	m_check_waitloop	->SetValue(opts.WaitLoop).Enable(!configToApply.EnablePresets);
-	m_check_fastCDVD	->SetValue(opts.fastCDVD).Enable(!configToApply.EnablePresets);
+	m_check_intc->SetValue(opts.IntcStat);
+	m_check_waitloop->SetValue(opts.WaitLoop);
+	m_check_fastCDVD->SetValue(opts.fastCDVD);
 
+	// Then, lock(gray out)/unlock the widgets as necessary.
 	EnableStuff( &configToApply );
 
 	// Layout necessary to ensure changed slider text gets re-aligned properly
@@ -290,7 +294,8 @@ void Panels::SpeedHacksPanel::ApplyConfigToGui( AppConfig& configToApply, int fl
 	//Console.WriteLn("SpeedHacksPanel::ApplyConfigToGui: EnabledPresets: %s", configToApply.EnablePresets?"true":"false");
 }
 
-
+// Apply the values from the widgets to the config,
+// regardless if locked (grayed out) or not.
 void Panels::SpeedHacksPanel::Apply()
 {
 	g_Conf->EnableSpeedHacks = m_check_Enable->GetValue();
@@ -315,6 +320,7 @@ void Panels::SpeedHacksPanel::OnEnable_Toggled( wxCommandEvent& evt )
 {
 	AppConfig tmp=*g_Conf;
 	tmp.EnablePresets=false; //if clicked, button was enabled, so not using a preset --> let EnableStuff work
+	tmp.EnableSpeedHacks = m_check_Enable->GetValue();
 
 	EnableStuff( &tmp );
 	evt.Skip();
@@ -328,30 +334,6 @@ void Panels::SpeedHacksPanel::Defaults_Click( wxCommandEvent& evt )
 	currentConfigWithHacksReset.EnablePresets=false;//speed hacks gui depends on preset, apply it as if presets are disabled
 	ApplyConfigToGui( currentConfigWithHacksReset );
 	evt.Skip();
-}
-
-void Panels::SpeedHacksPanel::Slider_Click(wxScrollEvent &event) {
-	wxSlider* slider = (wxSlider*) event.GetEventObject();
-	int value = slider->GetValue();
-	int eventType = event.GetEventType();
-	if (eventType == wxEVT_SCROLL_PAGEUP || eventType == wxEVT_SCROLL_LINEUP) {
-		if (value > slider->GetMin()) {
-			slider->SetValue(value-1);
-		}
-	}
-	else if (eventType == wxEVT_SCROLL_TOP) {
-		slider->SetValue(slider->GetMin());
-	}
-	else if (eventType == wxEVT_SCROLL_PAGEDOWN || eventType == wxEVT_SCROLL_LINEDOWN) {
-		if (value < slider->GetMax()) {
-			slider->SetValue(value+1);
-		}
-	}
-	else if (eventType == wxEVT_SCROLL_BOTTOM) {
-		slider->SetValue(slider->GetMax());
-	}
-
-	event.Skip();
 }
 
 void Panels::SpeedHacksPanel::EECycleRate_Scroll(wxScrollEvent &event)

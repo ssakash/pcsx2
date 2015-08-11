@@ -21,6 +21,7 @@
 
 #include "stdafx.h"
 #include "GSTextureSW.h"
+#include "GSPng.h"
 
 GSTextureSW::GSTextureSW(int type, int width, int height)
 	: m_mapped(0)
@@ -122,6 +123,17 @@ bool GSTextureSW::Save(const string& fn, bool dds)
 {
 	if(dds) return false; // not implemented
 
+#ifdef ENABLE_OGL_PNG
+
+#ifdef ENABLE_OGL_DEBUG
+	GSPng::Format fmt = GSPng::RGB_A_PNG;
+#else
+	GSPng::Format fmt = GSPng::RGB_PNG;
+#endif
+	GSPng::Save(fmt, fn, (char*)m_data, m_size.x, m_size.y, m_pitch);
+	return true;
+
+#else
 	if(FILE* fp = fopen(fn.c_str(), "wb"))
 	{
 		BITMAPINFOHEADER bih;
@@ -174,4 +186,5 @@ bool GSTextureSW::Save(const string& fn, bool dds)
 	}
 
 	return false;
+#endif
 }

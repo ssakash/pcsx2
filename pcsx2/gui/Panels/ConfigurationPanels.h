@@ -324,6 +324,8 @@ namespace Panels
 		pxCheckBox*		m_check_Enable;
 		wxButton*		m_button_Defaults;
 
+		wxPanelWithHelpers* m_eeSliderPanel;
+		wxPanelWithHelpers* m_vuSliderPanel;
 		wxSlider*		m_slider_eecycle;
 		wxSlider*		m_slider_vustealer;
 		pxStaticText*	m_msg_eecycle;
@@ -351,7 +353,6 @@ namespace Panels
 
 		void OnEnable_Toggled( wxCommandEvent& evt );
 		void Defaults_Click( wxCommandEvent& evt );
-		void Slider_Click(wxScrollEvent &event);
 		void EECycleRate_Scroll(wxScrollEvent &event);
 		void VUCycleRate_Scroll(wxScrollEvent &event);
 	};

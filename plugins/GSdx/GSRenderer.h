@@ -45,11 +45,11 @@ protected:
 	int m_filter;
 	bool m_vsync;
 	bool m_aa1;
-	bool m_mipmap;
 	bool m_framelimit;
 	bool m_shaderfx;
 	bool m_fxaa;
 	bool m_shadeboost;
+	bool m_texture_shuffle;
 
 	virtual GSTexture* GetOutput(int i) = 0;
 

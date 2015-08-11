@@ -604,6 +604,7 @@
     <ClCompile Include="GSDeviceSW.cpp" />
     <ClCompile Include="GSDialog.cpp" />
     <ClCompile Include="GSDirtyRect.cpp" />
+    <ClCompile Include="GSDrawingContext.cpp" />
     <ClCompile Include="GSDrawScanline.cpp" />
     <ClCompile Include="GSDrawScanlineCodeGenerator.cpp" />
     <ClCompile Include="GSDrawScanlineCodeGenerator.x64.avx.cpp">
@@ -2065,6 +2066,7 @@
     <None Include="res\fxaa.fx" />
     <None Include="res\logo10.bmp" />
     <None Include="res\logo9.bmp" />
+    <None Include="res\logo_ogl.bmp" />
     <None Include="res\convert.fx" />
     <None Include="res\interlace.fx" />
     <None Include="res\merge.fx" />
@@ -2076,6 +2078,9 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GSdx.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\logo-ogl.bmp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

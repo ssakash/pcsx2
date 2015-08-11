@@ -106,6 +106,8 @@ void GSDevice::Present(const GSVector4i& r, int shader)
 		}
 	}
 
+	GL_PUSH("Present");
+
 	ClearRenderTarget(m_backbuffer, 0);
 
 	if(m_current)
@@ -116,11 +118,13 @@ void GSDevice::Present(const GSVector4i& r, int shader)
 	}
 
 	Flip();
+
+	GL_POP();
 }
 
-void GSDevice::Present(GSTexture* st, GSTexture* dt, const GSVector4& dr, int shader)
+void GSDevice::Present(GSTexture* sTex, GSTexture* dTex, const GSVector4& dRect, int shader)
 {
-	StretchRect(st, dt, dr, shader);
+	StretchRect(sTex, dTex, dRect, shader);
 }
 
 GSTexture* GSDevice::FetchSurface(int type, int w, int h, bool msaa, int format)
@@ -142,6 +146,20 @@ GSTexture* GSDevice::FetchSurface(int type, int w, int h, bool msaa, int format)
 	return CreateSurface(type, w, h, msaa, format);
 }
 
+void GSDevice::PrintMemoryUsage()
+{
+#ifdef ENABLE_OGL_DEBUG
+	uint32 pool = 0;
+	for(list<GSTexture*>::iterator i = m_pool.begin(); i != m_pool.end(); i++)
+	{
+		GSTexture* t = *i;
+		if (t)
+			pool += t->GetMemUsage();
+	}
+	GL_PERF("MEM: Surface Pool %dMB", pool >> 20u);
+#endif
+}
+
 void GSDevice::EndScene()
 {
 	m_vertex.start += m_vertex.count;
@@ -154,7 +172,16 @@ void GSDevice::Recycle(GSTexture* t)
 {
 	if(t)
 	{
-		Invalidate(t);
+		// FIXME: WARNING: Broken Texture Cache reuse render target without any
+		// cleaning (or uploading of correct gs mem data) Ofc it is wrong. If
+		// blending is enabled, rendering would be completely broken. However
+		// du to wrong invalidation of the TC it is sometimes better to reuse
+		// (partially) wrong data...
+		//
+		// Invalidating the data might be even worse. I'm not sure invalidating data really
+		// help on the perf. But people reports better perf on BDG2 (memory intensive) on OpenGL.
+		// It could be the reason.
+		t->Invalidate();
 
 		t->last_frame_used = m_frame;
 
@@ -203,9 +230,9 @@ GSTexture* GSDevice::CreateOffscreen(int w, int h, int format)
 	return FetchSurface(GSTexture::Offscreen, w, h, false, format);
 }
 
-void GSDevice::StretchRect(GSTexture* st, GSTexture* dt, const GSVector4& dr, int shader, bool linear)
+void GSDevice::StretchRect(GSTexture* sTex, GSTexture* dTex, const GSVector4& dRect, int shader, bool linear)
 {
-	StretchRect(st, GSVector4(0, 0, 1, 1), dt, dr, shader, linear);
+	StretchRect(sTex, GSVector4(0, 0, 1, 1), dTex, dRect, shader, linear);
 }
 
 GSTexture* GSDevice::GetCurrent()
@@ -213,7 +240,7 @@ GSTexture* GSDevice::GetCurrent()
 	return m_current;
 }
 
-void GSDevice::Merge(GSTexture* st[2], GSVector4* sr, GSVector4* dr, const GSVector2i& fs, bool slbg, bool mmod, const GSVector4& c)
+void GSDevice::Merge(GSTexture* sTex[2], GSVector4* sRect, GSVector4* dRect, const GSVector2i& fs, bool slbg, bool mmod, const GSVector4& c)
 {
 	if(m_merge == NULL || m_merge->GetSize() != fs)
 	{
@@ -234,17 +261,17 @@ void GSDevice::Merge(GSTexture* st[2], GSVector4* sr, GSVector4* dr, const GSVec
 
 		for(size_t i = 0; i < countof(tex); i++)
 		{
-			if(st[i] != NULL)
+			if(sTex[i] != NULL)
 			{
-				tex[i] = st[i]->IsMSAA() ? Resolve(st[i]) : st[i];
+				tex[i] = sTex[i]->IsMSAA() ? Resolve(sTex[i]) : sTex[i];
 			}
 		}
 
-		DoMerge(tex, sr, m_merge, dr, slbg, mmod, c);
+		DoMerge(tex, sRect, m_merge, dRect, slbg, mmod, c);
 
 		for(size_t i = 0; i < countof(tex); i++)
 		{
-			if(tex[i] != st[i])
+			if(tex[i] != sTex[i])
 			{
 				Recycle(tex[i]);
 			}
@@ -317,10 +344,10 @@ void GSDevice::ExternalFX()
 
 	if (m_shaderfx != NULL)
 	{
-		GSVector4 sr(0, 0, 1, 1);
-		GSVector4 dr(0, 0, s.x, s.y);
+		GSVector4 sRect(0, 0, 1, 1);
+		GSVector4 dRect(0, 0, s.x, s.y);
 
-		StretchRect(m_current, sr, m_shaderfx, dr, 7, false);
+		StretchRect(m_current, sRect, m_shaderfx, dRect, 7, false);
 		DoExternalFX(m_shaderfx, m_current);
 	}
 }
@@ -337,10 +364,10 @@ void GSDevice::FXAA()
 
 	if(m_fxaa != NULL)
 	{
-		GSVector4 sr(0, 0, 1, 1);
-		GSVector4 dr(0, 0, s.x, s.y);
+		GSVector4 sRect(0, 0, 1, 1);
+		GSVector4 dRect(0, 0, s.x, s.y);
 
-		StretchRect(m_current, sr, m_fxaa, dr, 7, false);
+		StretchRect(m_current, sRect, m_fxaa, dRect, 7, false);
 		DoFXAA(m_fxaa, m_current);
 	}
 }
@@ -357,10 +384,10 @@ void GSDevice::ShadeBoost()
 
 	if(m_shadeboost != NULL)
 	{
-		GSVector4 sr(0, 0, 1, 1);
-		GSVector4 dr(0, 0, s.x, s.y);
+		GSVector4 sRect(0, 0, 1, 1);
+		GSVector4 dRect(0, 0, s.x, s.y);
 
-		StretchRect(m_current, sr, m_shadeboost, dr, 0, false);
+		StretchRect(m_current, sRect, m_shadeboost, dRect, 0, false);
 		DoShadeBoost(m_shadeboost, m_current);
 	}
 }

@@ -23,48 +23,41 @@
 #include "GLState.h"
 
 namespace GLState {
-	GLuint fbo = 0;
-	GSVector2i viewport(0, 0);
-	GSVector4i scissor(0, 0, 0, 0);
+	GLuint fbo;
+	GSVector2i viewport;
+	GSVector4i scissor;
 
-	bool blend = false;
-	GLenum eq_RGB = 0;
-	GLenum eq_A   = 0;
-	GLenum f_sRGB = 0;
-	GLenum f_dRGB = 0;
-	GLenum f_sA = 0;
-	GLenum f_dA = 0;
-	bool r_msk = true;
-	bool g_msk = true;
-	bool b_msk = true;
-	bool a_msk = true;
-	float bf = 0.0;
+	bool blend;
+	GLenum eq_RGB;
+	GLenum f_sRGB;
+	GLenum f_dRGB;
+	uint32 wrgba;
 
-	bool depth = false;
-	GLenum depth_func = 0;
-	bool depth_mask = false;
+	float bf;
 
-	bool stencil = false;
-	GLenum stencil_func = 0;
-	GLenum stencil_pass = 0;
+	bool depth;
+	GLenum depth_func;
+	bool depth_mask;
 
-	GLuint ubo = 0;
+	bool stencil;
+	GLenum stencil_func;
+	GLenum stencil_pass;
 
-	GLuint ps_ss = 0;
+	GLuint ubo;
 
-	GLuint rt = 0;
-	GLuint ds = 0;
-	GLuint tex_unit[4] = {0, 0, 0, 0};
-	GLuint64 tex_handle[4] = { 0, 0, 0, 0};
-	bool dirty_ressources = false;
+	GLuint ps_ss;
 
-	GLuint ps = 0;
-	GLuint gs = 0;
-	GLuint vs = 0;
-	GLuint program = 0;
-	bool dirty_prog = false;
-	bool dirty_subroutine_vs = false;
-	bool dirty_subroutine_ps = false;
+	GLuint rt;
+	GLuint ds;
+	GLuint tex_unit[4];
+	GLuint64 tex_handle[4];
+	bool dirty_ressources;
+
+	GLuint ps;
+	GLuint gs;
+	GLuint vs;
+	GLuint program;
+	bool dirty_prog;
 #if 0
 	struct {
 		GSVertexBufferStateOGL* vb;
@@ -81,15 +74,9 @@ namespace GLState {
 
 		blend = false;
 		eq_RGB = 0;
-		eq_A   = 0;
 		f_sRGB = 0;
 		f_dRGB = 0;
-		f_sA = 0;
-		f_dA = 0;
-		r_msk = true;
-		g_msk = true;
-		b_msk = true;
-		a_msk = true;
+		wrgba = 0xF;
 		bf = 0.0;
 
 		depth = false;
@@ -116,8 +103,6 @@ namespace GLState {
 		vs = 0;
 		program = 0;
 		dirty_prog = false;
-		dirty_subroutine_vs = false;
-		dirty_subroutine_ps = false;
 		dirty_ressources = false;
 	}
 }
