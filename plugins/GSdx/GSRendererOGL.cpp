@@ -27,8 +27,6 @@
 GSRendererOGL::GSRendererOGL()
 	: GSRendererHW(new GSTextureCacheOGL(this))
 {
-	m_pixelcenter = GSVector2(-0.5f, -0.5f);
-
 	m_accurate_date   = theApp.GetConfig("accurate_date", 0);
 
 	m_sw_blending = theApp.GetConfig("accurate_blending_unit", 1);
@@ -48,6 +46,14 @@ bool GSRendererOGL::CreateDevice(GSDevice* dev)
 {
 	if (!GSRenderer::CreateDevice(dev))
 		return false;
+
+	// No sw blending if not supported (Intel GPU)
+	if (!GLLoader::found_GL_ARB_texture_barrier) {
+		fprintf(stderr, "Error GL_ARB_texture_barrier is not supported by your driver. You can't emulate correctly the GS blending unit! Sorry!\n");
+		m_accurate_date = false;
+		m_sw_blending = 0;
+	}
+
 
 	return true;
 }
@@ -152,7 +158,7 @@ void GSRendererOGL::SetupIA()
 	dev->IASetPrimitiveTopology(t);
 }
 
-bool GSRendererOGL::EmulateTextureShuffleAndFbmask(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL::OMColorMaskSelector& om_csel, GSDeviceOGL::PSConstantBuffer& ps_cb)
+bool GSRendererOGL::EmulateTextureShuffleAndFbmask(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL::OMColorMaskSelector& om_csel)
 {
 	bool require_barrier = false;
 
@@ -237,7 +243,7 @@ bool GSRendererOGL::EmulateTextureShuffleAndFbmask(GSDeviceOGL::PSSelector& ps_s
 		// Please bang my head against the wall!
 		// 1/ Reduce the frame mask to a 16 bit format
 		const uint32& m = m_context->FRAME.FBMSK;
-		uint32 fbmask = ((m >> 3) & 0x1F) | ((m >> 6) & 0x3E0) | ((m >> 9) & 0x7C00) | ((m >> 31) & 0x8000);
+		uint32 fbmask = ((m >> 3) & 0x1F) | ((m >> 6) & 0x3E0) | ((m >> 9) & 0x7C00) | ((m >> 16) & 0x8000);
 		// FIXME GSVector will be nice here
 		uint8 rg_mask = fbmask & 0xFF;
 		uint8 ba_mask = (fbmask >> 8) & 0xFF;
@@ -301,93 +307,84 @@ bool GSRendererOGL::EmulateTextureShuffleAndFbmask(GSDeviceOGL::PSSelector& ps_s
 	return require_barrier;
 }
 
-bool GSRendererOGL::EmulateBlending(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL::PSConstantBuffer& ps_cb, bool DATE_GL42)
+bool GSRendererOGL::EmulateBlending(GSDeviceOGL::PSSelector& ps_sel, bool DATE_GL42)
 {
+	GSDeviceOGL* dev         = (GSDeviceOGL*)m_dev;
 	const GIFRegALPHA& ALPHA = m_context->ALPHA;
 	bool require_barrier     = false;
-	GSDeviceOGL* dev         = (GSDeviceOGL*)m_dev;
-	float afix               = (float)m_context->ALPHA.FIX / 0x80;
-	GSDeviceOGL::OMBlendSelector om_bsel;
+	bool sw_blending         = false;
 
-	om_bsel.abe = PRIM->ABE || PRIM->AA1 && m_vt.m_primclass == GS_LINE_CLASS;
-
-	om_bsel.a = ALPHA.A;
-	om_bsel.b = ALPHA.B;
-	om_bsel.c = ALPHA.C;
-	om_bsel.d = ALPHA.D;
+	// No blending so early exit
+	if (!(PRIM->ABE || PRIM->AA1 && m_vt.m_primclass == GS_LINE_CLASS)) {
+#ifdef ENABLE_OGL_DEBUG
+		if (m_env.PABE.PABE) {
+			GL_INS("!!! ENV PABE  without ABE !!!");
+		}
+#endif
+		dev->OMSetBlendState();
+		return false;
+	}
 
 	if (m_env.PABE.PABE)
 	{
 		GL_INS("!!! ENV PABE  not supported !!!");
-		// FIXME it could be supported with SW blending!
-		if (om_bsel.a == 0 && om_bsel.b == 1 && om_bsel.c == 0 && om_bsel.d == 1)
-		{
-			// this works because with PABE alpha blending is on when alpha >= 0x80, but since the pixel shader
-			// cannot output anything over 0x80 (== 1.0) blending with 0x80 or turning it off gives the same result
-			om_bsel.abe = 0;
+		if (m_sw_blending >= ACC_BLEND_CCLIP_DALPHA) {
+			ps_sel.pabe = 1;
+			require_barrier |= (ALPHA.C == 1);
+			sw_blending = true;
 		}
-		else
-		{
-			//Breath of Fire Dragon Quarter triggers this in battles. Graphics are fine though.
-			//ASSERT(0);
-		}
-	}
-
-	// No blending so early exit
-	if (!om_bsel.abe) {
-		dev->OMSetBlendState();
-		return require_barrier;
+		//Breath of Fire Dragon Quarter triggers this in battles. Graphics are fine though.
+		//ASSERT(0);
 	}
 
 	// Compute the blending equation to detect special case
-	int blend_sel  = ((om_bsel.a * 3 + om_bsel.b) * 3 + om_bsel.c) * 3 + om_bsel.d;
-	int blend_flag = GSDeviceOGL::m_blendMapD3D9[blend_sel].bogus;
+	uint8 blend_index  = ((ALPHA.A * 3 + ALPHA.B) * 3 + ALPHA.C) * 3 + ALPHA.D;
+	int blend_flag = GSDeviceOGL::m_blendMapOGL[blend_index].bogus;
+
 	// SW Blend is (nearly) free. Let's use it.
-	bool free_blend = (blend_flag & BLEND_NO_BAR) || (m_prim_overlap == PRIM_OVERLAP_NO);
-	// We really need SW blending for this one, barely used
-	bool impossible_blend = (blend_flag & BLEND_A_MAX);
+	bool impossible_or_free_blend = (blend_flag & (BLEND_NO_BAR|BLEND_A_MAX|BLEND_ACCU))
+			|| (m_prim_overlap == PRIM_OVERLAP_NO);
+
 	// Do the multiplication in shader for blending accumulation: Cs*As + Cd or Cs*Af + Cd
 	bool accumulation_blend = (blend_flag & BLEND_ACCU);
 
-	bool sw_blending_base = m_sw_blending && (free_blend || impossible_blend);
-
-	// Color clip
-	if (m_env.COLCLAMP.CLAMP == 0) {
-		if (accumulation_blend) {
-			ps_sel.hdr = 1;
-			GL_INS("COLCLIP Fast HDR mode ENABLED");
-		} else if (m_sw_blending >= ACC_BLEND_CCLIP_DALPHA || sw_blending_base) {
-			ps_sel.colclip = 1;
-			sw_blending_base = true;
-			GL_INS("COLCLIP SW ENABLED (blending is %d/%d/%d/%d)", ALPHA.A, ALPHA.B, ALPHA.C, ALPHA.D);
-		} else {
-			GL_INS("Sorry colclip isn't supported");
-		}
-	}
-
-	// Note: Option is duplicated, one impact the blend unit / the other the shader.
-	sw_blending_base |= accumulation_blend;
-
 	// Warning no break on purpose
-	bool sw_blending_adv = false;
 	switch (m_sw_blending) {
-		case ACC_BLEND_ULTRA:			sw_blending_adv |= true;
-		case ACC_BLEND_FULL:			sw_blending_adv |= !( (ALPHA.A == ALPHA.B) || (ALPHA.C == 2 && afix <= 1.002f) );
-		case ACC_BLEND_CCLIP_DALPHA:	sw_blending_adv |= (ALPHA.C == 1);
-		case ACC_BLEND_SPRITE:			sw_blending_adv |= m_vt.m_primclass == GS_SPRITE_CLASS;
-		default:						break;
+		case ACC_BLEND_ULTRA:           sw_blending |= true;
+		case ACC_BLEND_FULL:            if (!m_vt.m_alpha.valid && (ALPHA.C == 0)) GetAlphaMinMax();
+										sw_blending |= (ALPHA.A != ALPHA.B) &&
+												((ALPHA.C == 0 && m_vt.m_alpha.max > 128) || (ALPHA.C == 2 && ALPHA.FIX > 128u));
+		case ACC_BLEND_CCLIP_DALPHA:    sw_blending |= (ALPHA.C == 1) || (m_env.COLCLAMP.CLAMP == 0);
+		case ACC_BLEND_SPRITE:          sw_blending |= m_vt.m_primclass == GS_SPRITE_CLASS;
+		case ACC_BLEND_FREE:            sw_blending |= ps_sel.fbmask || impossible_or_free_blend;
+		default:                        sw_blending |= accumulation_blend;
 	}
-
-	bool sw_blending = sw_blending_base // Free case or Impossible blend
-		|| sw_blending_adv // complex blending case (for special effect)
-		|| ps_sel.fbmask; // accurate fbmask
-
-
 	// SW Blending
 	// GL42 interact very badly with sw blending. GL42 uses the primitiveID to find the primitive
 	// that write the bad alpha value. Sw blending will force the draw to run primitive by primitive
 	// (therefore primitiveID will be constant to 1)
 	sw_blending &= !DATE_GL42;
+
+	// Color clip
+	if (m_env.COLCLAMP.CLAMP == 0) {
+		if (m_prim_overlap == PRIM_OVERLAP_NO) {
+			// The fastest algo that requires a single pass
+			GL_INS("COLCLIP Free mode ENABLED");
+			ps_sel.colclip = 1;
+		} else if (accumulation_blend) {
+			// A fast algo that requires 2 passes
+			GL_INS("COLCLIP Fast HDR mode ENABLED");
+			ps_sel.hdr = 1;
+		} else if (sw_blending) {
+			// A slow algo that could requires several passes (barely used)
+			GL_INS("COLCLIP SW ENABLED (blending is %d/%d/%d/%d)", ALPHA.A, ALPHA.B, ALPHA.C, ALPHA.D);
+			ps_sel.colclip = 1;
+		} else {
+			// Speed hack skip previous slow algo
+			GL_INS("Sorry colclip isn't supported");
+		}
+	}
+
 	// Seriously don't expect me to support this kind of crazyness.
 	// No mix of COLCLIP + accumulation_blend + DATE GL42
 	// Neither fbmask and GL42
@@ -397,19 +394,25 @@ bool GSRendererOGL::EmulateBlending(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL
 	// For stat to optimize accurate option
 #if 0
 	GL_INS("BLEND_INFO: %d/%d/%d/%d. Clamp:%d. Prim:%d number %d (sw %d)",
-			om_bsel.a, om_bsel.b,  om_bsel.c, om_bsel.d, m_env.COLCLAMP.CLAMP, m_vt.m_primclass, m_vertex.next, sw_blending);
+			ALPHA.A, ALPHA.B,  ALPHA.C, ALPHA.D, m_env.COLCLAMP.CLAMP, m_vt.m_primclass, m_vertex.next, sw_blending);
 #endif
 	if (sw_blending) {
-		ps_sel.blend_a = om_bsel.a;
-		ps_sel.blend_b = om_bsel.b;
-		ps_sel.blend_c = om_bsel.c;
-		ps_sel.blend_d = om_bsel.d;
+		ps_sel.blend_a = ALPHA.A;
+		ps_sel.blend_b = ALPHA.B;
+		ps_sel.blend_c = ALPHA.C;
+		ps_sel.blend_d = ALPHA.D;
 
 		if (accumulation_blend) {
-			// Keep HW blending to do the addition
-			dev->OMSetBlendState(blend_sel);
-			om_bsel.abe = 1;
-			// Remove the addition from the SW blending
+			// Keep HW blending to do the addition/subtraction
+			dev->OMSetBlendState(blend_index);
+			if (ALPHA.A == 2) {
+				// The blend unit does a reverse subtraction so it means
+				// the shader must output a positive value.
+				// Replace 0 - Cs by Cs - 0
+				ps_sel.blend_a = ALPHA.B;
+				ps_sel.blend_b = 2;
+			}
+			// Remove the addition/substraction from the SW blending
 			ps_sel.blend_d = 2;
 		} else {
 			// Disable HW blending
@@ -418,19 +421,19 @@ bool GSRendererOGL::EmulateBlending(GSDeviceOGL::PSSelector& ps_sel, GSDeviceOGL
 
 		// Require the fix alpha vlaue
 		if (ALPHA.C == 2) {
-			ps_cb.AlphaCoeff.a = afix;
+			ps_cb.AlphaCoeff.a = (float)ALPHA.FIX / 128.0f;
 		}
 
 		// No need to flush for every primitive
 		require_barrier |= !(blend_flag & BLEND_NO_BAR) && !accumulation_blend;
 	} else {
-		ps_sel.clr1 = om_bsel.IsCLR1();
+		ps_sel.clr1 = !!(blend_flag & BLEND_C_CLR);
 		if (ps_sel.dfmt == 1 && ALPHA.C == 1) {
 			// 24 bits doesn't have an alpha channel so use 1.0f fix factor as equivalent
-			int hacked_blend_sel  = blend_sel + 3; // +3 <=> +1 on C
-			dev->OMSetBlendState(hacked_blend_sel, 1.0f, true);
+			int hacked_blend_index  = blend_index + 3; // +3 <=> +1 on C
+			dev->OMSetBlendState(hacked_blend_index, 128, true);
 		} else {
-			dev->OMSetBlendState(blend_sel, afix, (ALPHA.C == 2));
+			dev->OMSetBlendState(blend_index, ALPHA.FIX, (ALPHA.C == 2));
 		}
 	}
 
@@ -557,6 +560,15 @@ void GSRendererOGL::SendDraw(bool require_barrier)
 
 void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Source* tex)
 {
+	GSDeviceOGL::VSSelector vs_sel;
+	GSDeviceOGL::GSSelector gs_sel;
+
+	GSDeviceOGL::PSSelector ps_sel;
+	GSDeviceOGL::PSSamplerSelector ps_ssel;
+
+	GSDeviceOGL::OMColorMaskSelector om_csel;
+	GSDeviceOGL::OMDepthStencilSelector om_dssel;
+
 	GL_PUSH("GL Draw from %d in %d (Depth %d)",
 				tex && tex->m_texture ? tex->m_texture->GetID() : 0,
 				rt ? rt->GetID() : -1, ds ? ds->GetID() : -1);
@@ -577,34 +589,19 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 	GSDeviceOGL* dev = (GSDeviceOGL*)m_dev;
 	dev->s_n = s_n;
 
-	// FIXME: optimization, latch ps_cb & vs_cb in the object
-	// 1/ Avoid a reset every draw
-	// 2/ potentially less update
-	GSDeviceOGL::VSSelector vs_sel;
-	GSDeviceOGL::VSConstantBuffer vs_cb;
-
-	GSDeviceOGL::GSSelector gs_sel;
-
-	GSDeviceOGL::PSSelector ps_sel;
-	GSDeviceOGL::PSConstantBuffer ps_cb;
-	GSDeviceOGL::PSSamplerSelector ps_ssel;
-
-	GSDeviceOGL::OMColorMaskSelector om_csel;
-	GSDeviceOGL::OMDepthStencilSelector om_dssel;
-
 	if ((DATE || m_sw_blending) && GLLoader::found_GL_ARB_texture_barrier && (m_vt.m_primclass == GS_SPRITE_CLASS)) {
 		// Except 2D games, sprites are often use for special post-processing effect
 		m_prim_overlap = PrimitiveOverlap();
-#ifdef ENABLE_OGL_DEBUG
-		if ((m_prim_overlap != PRIM_OVERLAP_NO) && (m_context->FRAME.Block() == m_context->TEX0.TBP0) && (m_vertex.next > 2)) {
-			GL_INS("ERROR: Source and Target are the same!");
-		}
-#endif
 	} else {
 		m_prim_overlap = PRIM_OVERLAP_UNKNOW;
 	}
+#ifdef ENABLE_OGL_DEBUG
+	if (m_sw_blending && (m_prim_overlap != PRIM_OVERLAP_NO) && (m_context->FRAME.Block() == m_context->TEX0.TBP0) && (m_vertex.next > 2)) {
+		GL_INS("ERROR: Source and Target are the same!");
+	}
+#endif
 
-	require_barrier |= EmulateTextureShuffleAndFbmask(ps_sel, om_csel, ps_cb);
+	require_barrier |= EmulateTextureShuffleAndFbmask(ps_sel, om_csel);
 
 	// DATE: selection of the algorithm. Must be done before blending because GL42 is not compatible with blending
 
@@ -615,7 +612,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 			require_barrier = true;
 			DATE_GL45 = true;
 			DATE = false;
-		} else if (m_accurate_date && om_csel.wa
+		} else if (m_accurate_date && om_csel.wa /* FIXME Check the msb bit of the mask instead + the dfmt*/
 				&& (!m_context->TEST.ATE || m_context->TEST.ATST == ATST_ALWAYS)) {
 			// texture barrier will split the draw call into n draw call. It is very efficient for
 			// few primitive draws. Otherwise it sucks.
@@ -632,7 +629,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 	// Blend
 
 	if (!IsOpaque() && rt) {
-		require_barrier |= EmulateBlending(ps_sel, ps_cb, DATE_GL42);
+		require_barrier |= EmulateBlending(ps_sel, DATE_GL42);
 	} else {
 		dev->OMSetBlendState(); // No blending please
 	}
@@ -771,7 +768,13 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 	{
 		ps_sel.fog = 1;
 
-		ps_cb.FogColor_AREF = GSVector4::rgba32(m_env.FOGCOL.u32[0]);
+		GSVector4 fc = GSVector4::rgba32(m_env.FOGCOL.u32[0]);
+#if _M_SSE >= 0x401
+		// Blend AREF to avoid to load a random value for alpha (dirty cache)
+		ps_cb.FogColor_AREF = fc.blend32<8>(ps_cb.FogColor_AREF);
+#else
+		ps_cb.FogColor_AREF = fc;
+#endif
 	}
 
 	if (m_context->TEST.ATE)
@@ -792,7 +795,7 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 		const GSLocalMemory::psm_t &psm = GSLocalMemory::m_psm[m_context->TEX0.PSM];
 		const GSLocalMemory::psm_t &cpsm = psm.pal > 0 ? GSLocalMemory::m_psm[m_context->TEX0.CPSM] : psm;
 		bool bilinear = m_filter == 2 ? m_vt.IsLinear() : m_filter != 0;
-		bool simple_sample = !tex->m_palette && cpsm.fmt == 0 && m_context->CLAMP.WMS < 3 && m_context->CLAMP.WMT < 3;
+		bool simple_sample = !tex->m_palette && cpsm.fmt == 0 && m_context->CLAMP.WMS < 2 && m_context->CLAMP.WMT < 2;
 		// Don't force extra filtering on sprite (it creates various upscaling issue)
 		bilinear &= !((m_vt.m_primclass == GS_SPRITE_CLASS) && m_userhacks_round_sprite_offset && !m_vt.IsLinear());
 
@@ -831,9 +834,6 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 
 		ps_sel.ltf = bilinear && !simple_sample;
 		spritehack = tex->m_spritehack_t;
-		// FIXME the ati is currently disabled on the shader. I need to find a .gs to test that we got same
-		// bug on opengl
-		//ps_sel.point_sampler = 0; // !(bilinear && simple_sample);
 
 		int w = tex->m_texture->GetWidth();
 		int h = tex->m_texture->GetHeight();
@@ -843,28 +843,25 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 
 		GSVector4 WH(tw, th, w, h);
 
-		if (PRIM->FST)
-		{
-			vs_cb.TextureScale = GSVector4(1.0f / 16) / WH.xyxy();
-			ps_sel.fst = 1;
-		}
+		ps_sel.fst = !!PRIM->FST;
 
 		ps_cb.WH = WH;
 		ps_cb.HalfTexel = GSVector4(-0.5f, 0.5f).xxyy() / WH.zwzw();
-		ps_cb.MskFix = GSVector4i(m_context->CLAMP.MINU, m_context->CLAMP.MINV, m_context->CLAMP.MAXU, m_context->CLAMP.MAXV);
+		if ((m_context->CLAMP.WMS | m_context->CLAMP.WMT) > 1) {
+			ps_cb.MskFix = GSVector4i(m_context->CLAMP.MINU, m_context->CLAMP.MINV, m_context->CLAMP.MAXU, m_context->CLAMP.MAXV);
+			ps_cb.MinMax = GSVector4(ps_cb.MskFix) / WH.xyxy();
+		}
 
 		// TC Offset Hack
 		ps_sel.tcoffsethack = !!UserHacks_TCOffset;
-		ps_cb.TC_OffsetHack = GSVector4(UserHacks_TCO_x, UserHacks_TCO_y).xyxy() / WH.xyxy();
+		ps_cb.TC_OH_TS = GSVector4(1/16.0f, 1/16.0f, UserHacks_TCO_x, UserHacks_TCO_y).xyxy() / WH.xyxy();
 
-		GSVector4 clamp(ps_cb.MskFix);
 		GSVector4 ta(m_env.TEXA & GSVector4i::x000000ff());
+		ps_cb.MinF_TA = ta.xyxy() / WH.xyxy(GSVector4(255, 255));
 
-		ps_cb.MinMax = clamp / WH.xyxy();
-		ps_cb.MinF_TA = (clamp + 0.5f).xyxy(ta) / WH.xyxy(GSVector4(255, 255));
-
-		ps_ssel.tau = (m_context->CLAMP.WMS + 3) >> 1;
-		ps_ssel.tav = (m_context->CLAMP.WMT + 3) >> 1;
+		// Only enable clamping in CLAMP mode. REGION_CLAMP will be done manually in the shader
+		ps_ssel.tau = (m_context->CLAMP.WMS != CLAMP_CLAMP);
+		ps_ssel.tav = (m_context->CLAMP.WMT != CLAMP_CLAMP);
 		ps_ssel.ltf = bilinear && simple_sample;
 
 		// Setup Texture ressources
@@ -931,13 +928,11 @@ void GSRendererOGL::DrawPrims(GSTexture* rt, GSTexture* ds, GSTextureCache::Sour
 
 		// Don't write anything on the color buffer
 		// Neither in the depth buffer
-		dev->OMSetWriteBuffer(GL_NONE);
 		glDepthMask(false);
 		// Compute primitiveID max that pass the date test
 		SendDraw(false);
 
 		// Ask PS to discard shader above the primitiveID max
-		dev->OMSetWriteBuffer();
 		glDepthMask(GLState::depth_mask);
 
 		ps_sel.date = 3;

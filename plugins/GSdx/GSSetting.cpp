@@ -70,10 +70,7 @@ const char* dialog_message(int ID, bool* updateText) {
 				" Half option is the preferred one. Use it for Mana Khemia or Ar Tonelico for example."
 				" Full can be used for Tales of Destiny.";
 		case IDC_WILDHACK:
-			return "WildArms\n\nLowers the GS precision to avoid gaps between pixels when"
-				" upscaling. Full option fixes the text on WildArms games, while Half option might improve portraits"
-				" in Ar Tonelico.\n\n"
-				"Strech hack might work too";
+			return "Wild Arms\n\nLowers the GS precision to avoid gaps between pixels when upscaling. Fixes the text on Wild Arms games.";
 		case IDC_MSAACB:
 		case IDC_STATIC_MSAA:
 			return "Multisample Anti-Aliasing\n\nEnables hardware Anti-Aliasing. Needs lots of memory."
@@ -130,7 +127,7 @@ const char* dialog_message(int ID, bool* updateText) {
 				"------------------------------------------------------------------\n"
 				"Ultra\t: The blending unit will be completely emulated by the shader. It is ultra slow! It is intended for debug\n";
 		case IDC_TC_DEPTH:
-			return "Allow to convert Depth buffer from/to Color buffer. It is used for blur & depth of field effects";
+			return "Allows the conversion of Depth buffer from/to Color buffer. It is used for blur & depth of field effects";
 		default:
 			if (updateText)
 				*updateText = false;

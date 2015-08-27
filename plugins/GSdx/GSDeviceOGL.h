@@ -200,7 +200,7 @@ class GSDeviceOGL : public GSDevice
 
 		GSVector4 HalfTexel;
 		GSVector4 MinMax;
-		GSVector4 TC_OffsetHack;
+		GSVector4 TC_OH_TS;
 
 		PSConstantBuffer()
 		{
@@ -211,7 +211,7 @@ class GSDeviceOGL : public GSDevice
 			MinF_TA       = GSVector4::zero();
 			MskFix        = GSVector4i::zero();
 			AlphaCoeff    = GSVector4::zero();
-			TC_OffsetHack = GSVector4::zero();
+			TC_OH_TS      = GSVector4::zero();
 			FbMask        = GSVector4i::zero();
 		}
 
@@ -220,7 +220,7 @@ class GSDeviceOGL : public GSDevice
 			GSVector4i* a = (GSVector4i*)this;
 			GSVector4i* b = (GSVector4i*)cb;
 
-			// if WH matches both HalfTexel and TC_OffsetHack do too
+			// if WH matches both HalfTexel and TC_OH_TS do too
 			// MinMax depends on WH and MskFix so no need to check it too
 			if(!((a[0] == b[0]) & (a[1] == b[1]) & (a[2] == b[2]) & (a[3] == b[3]) & (a[4] == b[4]) & (a[5] == b[5])).alltrue())
 			{
@@ -285,14 +285,14 @@ class GSDeviceOGL : public GSDevice
 				uint32 blend_c:2;
 				uint32 blend_d:2;
 				uint32 clr1:1; // useful?
+				uint32 pabe:1;
 				uint32 hdr:1;
 				uint32 colclip:1;
 
 				// Hack
 				uint32 tcoffsethack:1;
-				//uint32 point_sampler:1; Not tested, so keep the bit for blend
 
-				uint32 _free2:20;
+				uint32 _free2:19;
 			};
 
 			uint64 key;
@@ -378,44 +378,8 @@ class GSDeviceOGL : public GSDevice
 		OMColorMaskSelector(uint32 c) { wrgba = c; }
 	};
 
-	struct OMBlendSelector
-	{
-		union
-		{
-			struct
-			{
-				uint32 abe:1;
-				uint32 a:2;
-				uint32 b:2;
-				uint32 c:2;
-				uint32 d:2;
-
-				uint32 _free:23;
-			};
-
-			struct
-			{
-				uint32 _abe:1;
-				uint32 abcd:8;
-
-				uint32 _free2:23;
-			};
-
-			uint32 key;
-		};
-
-		operator uint32() {return key;}
-
-		OMBlendSelector() : key(0) {}
-
-		bool IsCLR1() const
-		{
-			return (key & 0x19f) == 0x93; // abe == 1 && a == 1 && b == 2 && d == 1
-		}
-	};
-
-	struct D3D9Blend {int bogus, op, src, dst;};
-	static const D3D9Blend m_blendMapD3D9[3*3*3*3 + 1];
+	struct OGLBlend {uint16 bogus, op, src, dst;};
+	static const OGLBlend m_blendMapOGL[3*3*3*3 + 1];
 	static const int m_NO_BLEND;
 	static const int m_MERGE_BLEND;
 
@@ -562,9 +526,8 @@ class GSDeviceOGL : public GSDevice
 	void PSSetSamplerState(GLuint ss);
 
 	void OMSetDepthStencilState(GSDepthStencilOGL* dss);
-	void OMSetBlendState(int blend_index = 0, float blend_factor = 0.0f, bool is_blend_constant = false);
+	void OMSetBlendState(uint8 blend_index = 0, uint8 blend_factor = 0, bool is_blend_constant = false);
 	void OMSetRenderTargets(GSTexture* rt, GSTexture* ds, const GSVector4i* scissor = NULL);
-	void OMSetWriteBuffer(GLenum buffer = GL_COLOR_ATTACHMENT0);
 	void OMSetColorMaskState(OMColorMaskSelector sel = OMColorMaskSelector());
 
 

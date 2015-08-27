@@ -310,10 +310,11 @@ static int _GSopen(void** dsp, char* title, int renderer, int threads = -1)
 				break;
 			}
 #else
-			wnd[0] = new GSWndOGL();
 #ifdef EGL_SUPPORTED
-			wnd[1] = new GSWndEGL();
+			wnd[0] = new GSWndEGL();
+			wnd[1] = new GSWndOGL();
 #else
+			wnd[0] = new GSWndOGL();
 			wnd[1] = NULL;
 #endif
 #endif
@@ -439,6 +440,13 @@ static int _GSopen(void** dsp, char* title, int renderer, int threads = -1)
 
 		GSclose();
 
+		return -1;
+	}
+
+	if (renderer == 12 && theApp.GetConfig("debug_glsl_shader", 0) == 2) {
+		printf("GSdx: test OpenGL shader. Please wait...\n\n");
+		static_cast<GSDeviceOGL*>(s_gs->m_dev)->SelfShaderTest();
+		printf("\nGSdx: test OpenGL shader done. It will now exit\n");
 		return -1;
 	}
 	
@@ -1520,11 +1528,6 @@ EXPORT_C GSReplay(char* lpszCmdLine, int renderer)
 	}
 	if (s_gs->m_wnd == NULL) return;
 
-	if (theApp.GetConfig("debug_glsl_shader", 0) == 2) {
-		dynamic_cast<GSDeviceOGL*>(s_gs->m_dev)->SelfShaderTest();
-		return;
-	}
-
 	{ // Read .gs content
 		std::string f(lpszCmdLine);
 #ifdef LZMA_SUPPORTED
@@ -1667,14 +1670,18 @@ EXPORT_C GSReplay(char* lpszCmdLine, int renderer)
 		// Ensure the rendering is complete to measure correctly the time.
 		glFinish();
 
-		unsigned long end = timeGetTime();
-		fprintf(stderr, "The %ld frames of the scene was render on %ldms\n", frame_number, end - start);
-		fprintf(stderr, "A means of %fms by frame\n", (float)(end - start)/(float)frame_number);
+		if (finished > 90) {
+			sleep(1);
+		} else {
+			unsigned long end = timeGetTime();
+			fprintf(stderr, "The %ld frames of the scene was render on %ldms\n", frame_number, end - start);
+			fprintf(stderr, "A means of %fms by frame\n", (float)(end - start)/(float)frame_number);
 
-		stats.push_back((float)(end - start));
+			stats.push_back((float)(end - start));
 
-		finished--;
-		total_frame_nb += frame_number;
+			finished--;
+			total_frame_nb += frame_number;
+		}
 	}
 
 	if (theApp.GetConfig("linux_replay", 1) > 1) {

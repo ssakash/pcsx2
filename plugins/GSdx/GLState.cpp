@@ -28,12 +28,11 @@ namespace GLState {
 	GSVector4i scissor;
 
 	bool blend;
-	GLenum eq_RGB;
-	GLenum f_sRGB;
-	GLenum f_dRGB;
+	uint16 eq_RGB;
+	uint16 f_sRGB;
+	uint16 f_dRGB;
+	uint8 bf;
 	uint32 wrgba;
-
-	float bf;
 
 	bool depth;
 	GLenum depth_func;
@@ -51,21 +50,12 @@ namespace GLState {
 	GLuint ds;
 	GLuint tex_unit[4];
 	GLuint64 tex_handle[4];
-	bool dirty_ressources;
 
 	GLuint ps;
 	GLuint gs;
 	GLuint vs;
 	GLuint program;
 	bool dirty_prog;
-#if 0
-	struct {
-		GSVertexBufferStateOGL* vb;
-		GSDepthStencilOGL* dss;
-		GSBlendStateOGL* bs;
-		float bf; // blend factor
-	} m_state;
-#endif
 
 	void Clear() {
 		fbo = 0;
@@ -76,8 +66,8 @@ namespace GLState {
 		eq_RGB = 0;
 		f_sRGB = 0;
 		f_dRGB = 0;
+		bf = 0;
 		wrgba = 0xF;
-		bf = 0.0;
 
 		depth = false;
 		depth_func = 0;
@@ -102,7 +92,6 @@ namespace GLState {
 		gs = 0;
 		vs = 0;
 		program = 0;
-		dirty_prog = false;
-		dirty_ressources = false;
+		dirty_prog = true;
 	}
 }

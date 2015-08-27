@@ -205,6 +205,12 @@ bool GSDeviceOGL::Create(GSWnd* wnd)
 	m_shader = new GSShaderOGL(!!theApp.GetConfig("debug_glsl_shader", 0));
 
 	gl_GenFramebuffers(1, &m_fbo);
+	// Always write to the first buffer
+	OMSetFBO(m_fbo);
+	GLenum target[1] = {GL_COLOR_ATTACHMENT0};
+	gl_DrawBuffers(1, target);
+	OMSetFBO(0);
+
 	gl_GenFramebuffers(1, &m_fbo_read);
 	// Always read from the first buffer
 	gl_BindFramebuffer(GL_READ_FRAMEBUFFER, m_fbo_read);
@@ -353,7 +359,6 @@ bool GSDeviceOGL::Create(GSWnd* wnd)
 	ASSERT(sizeof(PSSamplerSelector) == 4);
 	ASSERT(sizeof(OMDepthStencilSelector) == 4);
 	ASSERT(sizeof(OMColorMaskSelector) == 4);
-	ASSERT(sizeof(OMBlendSelector) == 4);
 
 	return true;
 }
@@ -582,11 +587,9 @@ GLuint GSDeviceOGL::CreateSampler(bool bilinear, bool tau, bool tav)
 	gl_SamplerParameterf(sampler, GL_TEXTURE_MIN_LOD, 0);
 	gl_SamplerParameterf(sampler, GL_TEXTURE_MAX_LOD, 6);
 
-	if (GLLoader::found_GL_EXT_texture_filter_anisotropic && !!theApp.GetConfig("AnisotropicFiltering", 0) && !theApp.GetConfig("paltex", 0)) {
-		int anisotropy = theApp.GetConfig("MaxAnisotropy", 1);
-		if (anisotropy > 1) // 1 is the default in opengl so don't do anything
-			gl_SamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (float)anisotropy);
-	}
+	int anisotropy = theApp.GetConfig("MaxAnisotropy", 0);
+	if (GLLoader::found_GL_EXT_texture_filter_anisotropic && anisotropy && !theApp.GetConfig("paltex", 0))
+		gl_SamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (float)anisotropy);
 
 	GL_POP();
 	return sampler;
@@ -673,6 +676,7 @@ GLuint GSDeviceOGL::CompilePS(PSSelector sel)
 		+ format("#define PS_WRITE_RG %d\n", sel.write_rg)
 		+ format("#define PS_FBMASK %d\n", sel.fbmask)
 		+ format("#define PS_HDR %d\n", sel.hdr)
+		+ format("#define PS_PABE %d\n", sel.pabe);
 		;
 
 	return m_shader->Compile("tfx.glsl", "ps_main", GL_FRAGMENT_SHADER, tfx_fs_all_glsl, macro);
@@ -820,6 +824,7 @@ void GSDeviceOGL::SelfShaderTest()
 							sel.atst = 1;
 							sel.tfx = 1;
 							sel.tcc = 1;
+							sel.fst = 1;
 
 							sel.ltf = ltf;
 							sel.aem = aem;
@@ -1211,9 +1216,7 @@ void GSDeviceOGL::SetupDATE(GSTexture* rt, GSTexture* ds, const GSVertexPT1* ver
 	if (GLState::blend) {
 		glDisable(GL_BLEND);
 	}
-	// normally ok without any RT if GL_ARB_framebuffer_no_attachments is supported (minus driver bug)
 	OMSetRenderTargets(NULL, ds, &GLState::scissor);
-	OMSetColorMaskState(); // TODO: likely useless
 
 	// ia
 
@@ -1260,10 +1263,13 @@ void GSDeviceOGL::IASetPrimitiveTopology(GLenum topology)
 void GSDeviceOGL::PSSetShaderResource(int i, GSTexture* sr)
 {
 	ASSERT(i < (int)countof(GLState::tex_unit));
-	GLuint id = sr ? sr->GetID() : 0;
-	if (GLState::tex_unit[i] != id) {
-		GLState::tex_unit[i] = id;
-		gl_BindTextureUnit(i, id);
+	// Note: Nvidia debgger doesn't support the id 0 (ie the NULL texture)
+	if (sr) {
+		GLuint id = sr->GetID();
+		if (GLState::tex_unit[i] != id) {
+			GLState::tex_unit[i] = id;
+			gl_BindTextureUnit(i, id);
+		}
 	}
 }
 
@@ -1321,12 +1327,6 @@ void GSDeviceOGL::OMSetFBO(GLuint fbo)
 	}
 }
 
-void GSDeviceOGL::OMSetWriteBuffer(GLenum buffer)
-{
-	GLenum target[1] = {buffer};
-	gl_DrawBuffers(1, target);
-}
-
 void GSDeviceOGL::OMSetDepthStencilState(GSDepthStencilOGL* dss)
 {
 	dss->SetupDepth();
@@ -1342,7 +1342,7 @@ void GSDeviceOGL::OMSetColorMaskState(OMColorMaskSelector sel)
 	}
 }
 
-void GSDeviceOGL::OMSetBlendState(int blend_index, float blend_factor, bool is_blend_constant)
+void GSDeviceOGL::OMSetBlendState(uint8 blend_index, uint8 blend_factor, bool is_blend_constant)
 {
 	if (blend_index) {
 		if (!GLState::blend) {
@@ -1352,28 +1352,27 @@ void GSDeviceOGL::OMSetBlendState(int blend_index, float blend_factor, bool is_b
 
 		if (is_blend_constant && GLState::bf != blend_factor) {
 			GLState::bf = blend_factor;
-			gl_BlendColor(blend_factor, blend_factor, blend_factor, 0);
+			float bf = (float)blend_factor / 128.0f;
+			gl_BlendColor(bf, bf, bf, bf);
 		}
 
-		// FIXME test to use uint16 (cache friendly)
-		const GLenum& op = m_blendMapD3D9[blend_index].op;
-		if (GLState::eq_RGB != op) {
-			GLState::eq_RGB = op;
+		const OGLBlend& b = m_blendMapOGL[blend_index];
+
+		if (GLState::eq_RGB != b.op) {
+			GLState::eq_RGB = b.op;
 			if (gl_BlendEquationSeparateiARB)
-				gl_BlendEquationSeparateiARB(0, op, GL_FUNC_ADD);
+				gl_BlendEquationSeparateiARB(0, b.op, GL_FUNC_ADD);
 			else
-				gl_BlendEquationSeparate(op, GL_FUNC_ADD);
+				gl_BlendEquationSeparate(b.op, GL_FUNC_ADD);
 		}
 
-		const GLenum& src = m_blendMapD3D9[blend_index].src;
-		const GLenum& dst = m_blendMapD3D9[blend_index].dst;
-		if (GLState::f_sRGB != src || GLState::f_dRGB != dst) {
-			GLState::f_sRGB = src;
-			GLState::f_dRGB = dst;
+		if (GLState::f_sRGB != b.src || GLState::f_dRGB != b.dst) {
+			GLState::f_sRGB = b.src;
+			GLState::f_dRGB = b.dst;
 			if (gl_BlendFuncSeparateiARB)
-				gl_BlendFuncSeparateiARB(0, src, dst, GL_ONE, GL_ZERO);
+				gl_BlendFuncSeparateiARB(0, b.src, b.dst, GL_ONE, GL_ZERO);
 			else
-				gl_BlendFuncSeparate(src, dst, GL_ONE, GL_ZERO);
+				gl_BlendFuncSeparate(b.src, b.dst, GL_ONE, GL_ZERO);
 		}
 
 	} else {
@@ -1392,10 +1391,8 @@ void GSDeviceOGL::OMSetRenderTargets(GSTexture* rt, GSTexture* ds, const GSVecto
 	if (rt == NULL || !RT->IsBackbuffer()) {
 		OMSetFBO(m_fbo);
 		if (rt) {
-			OMSetWriteBuffer();
 			OMAttachRt(RT);
 		} else {
-			OMSetWriteBuffer(GL_NONE);
 			OMAttachRt();
 		}
 
@@ -1541,7 +1538,7 @@ void GSDeviceOGL::DebugOutputToFile(GLenum gl_source, GLenum gl_type, GLuint id,
 const int GSDeviceOGL::m_NO_BLEND = 0;
 const int GSDeviceOGL::m_MERGE_BLEND = 3*3*3*3;
 
-const GSDeviceOGL::D3D9Blend GSDeviceOGL::m_blendMapD3D9[3*3*3*3 + 1] =
+const GSDeviceOGL::OGLBlend GSDeviceOGL::m_blendMapOGL[3*3*3*3 + 1] =
 {
 	{ BLEND_NO_BAR               , D3DBLENDOP_ADD         , D3DBLEND_ONE            , D3DBLEND_ZERO}           , // 0000: (Cs - Cs)*As + Cs ==> Cs
 	{ 0                          , D3DBLENDOP_ADD         , D3DBLEND_ZERO           , D3DBLEND_ONE}            , // 0001: (Cs - Cs)*As + Cd ==> Cd
@@ -1598,13 +1595,13 @@ const GSDeviceOGL::D3D9Blend GSDeviceOGL::m_blendMapD3D9[3*3*3*3 + 1] =
 	{ BLEND_C_CLR                , D3DBLENDOP_ADD         , D3DBLEND_DESTCOLOR      , D3DBLEND_BLENDFACTOR}    , //#1221: (Cd -  0)*F  + Cd ==> Cd*(1 + F)
 	{ 0                          , D3DBLENDOP_ADD         , D3DBLEND_ZERO           , D3DBLEND_BLENDFACTOR}    , // 1222: (Cd -  0)*F  +  0 ==> Cd*F
 	{ BLEND_NO_BAR               , D3DBLENDOP_ADD         , D3DBLEND_INVSRCALPHA    , D3DBLEND_ZERO}           , // 2000: (0  - Cs)*As + Cs ==> Cs*(1 - As)
-	{ 0                          , D3DBLENDOP_REVSUBTRACT , D3DBLEND_SRCALPHA       , D3DBLEND_ONE}            , // 2001: (0  - Cs)*As + Cd ==> Cd - Cs*As
+	{ BLEND_ACCU                 , D3DBLENDOP_REVSUBTRACT , D3DBLEND_ONE            , D3DBLEND_ONE}            , // 2001: (0  - Cs)*As + Cd ==> Cd - Cs*As
 	{ BLEND_NO_BAR               , D3DBLENDOP_REVSUBTRACT , D3DBLEND_SRCALPHA       , D3DBLEND_ZERO}           , // 2002: (0  - Cs)*As +  0 ==> 0 - Cs*As
 	{ 0                          , D3DBLENDOP_ADD         , D3DBLEND_INVDESTALPHA   , D3DBLEND_ZERO}           , // 2010: (0  - Cs)*Ad + Cs ==> Cs*(1 - Ad)
 	{ 0                          , D3DBLENDOP_REVSUBTRACT , D3DBLEND_DESTALPHA      , D3DBLEND_ONE}            , // 2011: (0  - Cs)*Ad + Cd ==> Cd - Cs*Ad
 	{ 0                          , D3DBLENDOP_REVSUBTRACT , D3DBLEND_DESTALPHA      , D3DBLEND_ZERO}           , // 2012: (0  - Cs)*Ad +  0 ==> 0 - Cs*Ad
 	{ BLEND_NO_BAR               , D3DBLENDOP_ADD         , D3DBLEND_INVBLENDFACTOR , D3DBLEND_ZERO}           , // 2020: (0  - Cs)*F  + Cs ==> Cs*(1 - F)
-	{ 0                          , D3DBLENDOP_REVSUBTRACT , D3DBLEND_BLENDFACTOR    , D3DBLEND_ONE}            , // 2021: (0  - Cs)*F  + Cd ==> Cd - Cs*F
+	{ BLEND_ACCU                 , D3DBLENDOP_REVSUBTRACT , D3DBLEND_ONE            , D3DBLEND_ONE}            , // 2021: (0  - Cs)*F  + Cd ==> Cd - Cs*F
 	{ BLEND_NO_BAR               , D3DBLENDOP_REVSUBTRACT , D3DBLEND_BLENDFACTOR    , D3DBLEND_ZERO}           , // 2022: (0  - Cs)*F  +  0 ==> 0 - Cs*F
 	{ 0                          , D3DBLENDOP_SUBTRACT    , D3DBLEND_ONE            , D3DBLEND_SRCALPHA}       , // 2100: (0  - Cd)*As + Cs ==> Cs - Cd*As
 	{ 0                          , D3DBLENDOP_ADD         , D3DBLEND_ZERO           , D3DBLEND_INVSRCALPHA}    , // 2101: (0  - Cd)*As + Cd ==> Cd*(1 - As)
