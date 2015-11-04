@@ -45,6 +45,7 @@ extern float VolumeAdjustBR;
 extern float VolumeAdjustSL;
 extern float VolumeAdjustSR;
 extern float VolumeAdjustLFE;
+extern int delay_cycles;
 
 struct Stereo51Out16DplII;
 struct Stereo51Out32DplII;
