@@ -223,7 +223,7 @@ bool GSSettingsDlg::OnCommand(HWND hWnd, UINT id, UINT code)
 			if (code == BN_CLICKED)
 				HacksDlg.DoModal();
 			break;
-		
+
 		case IDOK:
 		{
 			INT_PTR data;
@@ -419,6 +419,8 @@ GSShadeBostDlg::GSShadeBostDlg() :
 
 void GSShadeBostDlg::OnInit()
 {
+	//TV Shader
+	ComboBoxInit(IDC_TVSHADER, theApp.m_gs_tv_shaders, theApp.GetConfig("TVshader", 0));
 
 	//Shade Boost
 	CheckDlgButton(m_hWnd, IDC_SHADEBOOST, theApp.GetConfig("ShadeBoost", 0));
@@ -463,7 +465,7 @@ void GSShadeBostDlg::UpdateControls()
 	sprintf(text, "%d", contrast);
 	SetDlgItemText(m_hWnd, IDC_CONTRAST_TEXT, text);
 
-	// Shader Settings 
+	// Shader Settings
 	bool external_shader_selected = IsDlgButtonChecked(m_hWnd, IDC_SHADER_FX) == BST_CHECKED;
 	bool shadeboost_selected = IsDlgButtonChecked(m_hWnd, IDC_SHADEBOOST) == BST_CHECKED;
 	EnableWindow(GetDlgItem(m_hWnd, IDC_SHADEBOOST), hw);
@@ -519,14 +521,20 @@ bool GSShadeBostDlg::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
 		switch(id)
 		{
-		case IDOK: 
+		case IDOK:
 		{
+			INT_PTR data;
+			//TV Shader
+			if (ComboBoxGetSelData(IDC_TVSHADER, data))
+				{
+					theApp.SetConfig("TVshader", (int)data);
+				}
 			// Shade Boost
 			theApp.SetConfig("ShadeBoost", (int)IsDlgButtonChecked(m_hWnd, IDC_SHADEBOOST));
 			theApp.SetConfig("ShadeBoost_Contrast", contrast);
 			theApp.SetConfig("ShadeBoost_Brightness", brightness);
 			theApp.SetConfig("ShadeBoost_Saturation", saturation);
-			
+
 			// FXAA shader
 			theApp.SetConfig("Fxaa", (int)IsDlgButtonChecked(m_hWnd, IDC_FXAA));
 
@@ -538,6 +546,7 @@ bool GSShadeBostDlg::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 			int shader_fx_conf_length = (int)SendMessage(GetDlgItem(m_hWnd, IDC_SHADER_FX_CONF_EDIT), WM_GETTEXTLENGTH, 0, 0);
 			int length = std::max(shader_fx_length, shader_fx_conf_length) + 1;
 			char *buffer = new char[length];
+
 
 			SendMessage(GetDlgItem(m_hWnd, IDC_SHADER_FX_EDIT), WM_GETTEXT, (WPARAM)length, (LPARAM)buffer);
 			theApp.SetConfig("shaderfx_glsl", buffer); // Not really glsl only ;)
@@ -551,7 +560,7 @@ bool GSShadeBostDlg::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 			UpdateControls();
 		case IDC_SHADER_FX:
 			if (HIWORD(wParam) == BN_CLICKED)
-				UpdateControls(); 
+				UpdateControls();
 			break;
 		case IDC_SHADER_FX_BUTTON:
 			if (HIWORD(wParam) == BN_CLICKED)
@@ -574,6 +583,7 @@ bool GSShadeBostDlg::OnMessage(UINT message, WPARAM wParam, LPARAM lParam)
 			Button_SetCheck(GetDlgItem(m_hWnd, IDC_SHADEBOOST), 0);
 			Button_SetCheck(GetDlgItem(m_hWnd, IDC_FXAA), 0);
 			Button_SetCheck(GetDlgItem(m_hWnd, IDC_SHADER_FX), 0);
+			ComboBox_SetCurSel(GetDlgItem(m_hWnd, IDC_TVSHADER), 0);
 			UpdateControls();
 		} break;
 		}
