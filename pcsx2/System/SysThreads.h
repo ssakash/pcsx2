@@ -96,6 +96,14 @@ public:
 
 	bool IsClosed() const { return !IsOpen(); }
 	bool IsPaused() const { return !IsRunning() || (m_ExecMode <= ExecMode_Paused); }
+	
+	bool Sys_state(int x)
+	{
+		if (x == m_ExecMode)
+			return true;
+		else
+			return false;
+	}
 
 	bool IsClosing() const
 	{
