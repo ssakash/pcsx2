@@ -180,7 +180,7 @@ void DebugInterface::pauseCpu()
 void DebugInterface::resumeCpu()
 {
 	SysCoreThread& core = GetCoreThread();
-	if (core.IsPaused())
+	if (CoreThread.Sys_state(2) || CoreThread.Sys_state(1)) // check for valid VM state
 		core.Resume();
 }
 
